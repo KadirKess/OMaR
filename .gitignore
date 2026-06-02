@@ -1,0 +1,14 @@
+# Trash files
+.DS_Store
+
+# Python cache files
+__pycache__/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+
+# Log files
+*.log
