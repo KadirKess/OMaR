@@ -1,0 +1,61 @@
+\documentclass[a4paper,10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage[french]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,
+    urlcolor=black,
+    citecolor=black,
+}
+
+\title{\vspace{-1.5cm}\textbf{Reconnaissance Optique de Musique \\ \large Livrable 1~: État de l'Art}}
+    
+\author{Sacha Melin \\ Abdulkadir Kessaria}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+La reconnaissance optique de musique (OMR, pour \textit{Optical Music Recognition}) est un domaine de recherche qui vise à convertir des partitions musicales imprimées ou manuscrites en formats numériques exploitables. En nous basant sur les descriptions de Shatri et Fazekas~\cite{shatri2020opticalmusicrecognitionstate}, nous dressons un état de l'art sur les méthodes traditionnelles d'OMR, sans aborder les approches basées sur l'apprentissage profond. \\
+
+Les étapes standard du processus de reconnaissance optique de musique, telles que décrites par Rebelo et al.~\cite{Rebelo2012-jn}, comprennent les phases suivantes~: prétraitement de l'image, reconnaissance des symboles, reconstruction de l'information musicale, et construction du modèle de la notation musicale.
+
+\paragraph{Prétraitement de l'Image}
+
+Le prétraitement de l'image est fondamental pour améliorer la qualité de l'image et faciliter les étapes suivantes. Les techniques couramment utilisées incluent le lissage (via filtre gaussien~\cite{gocke2003building}), la binarisation (via seuillage adaptatif~\cite{gocke2003building} ou seuillage global~\cite{4310039}), et le redressement (via une transformée de Hough~\cite{BALLARD1981111}).
+
+\paragraph{Reconnaissance des Symboles}
+
+La reconnaissance des symboles musicaux se fait généralement en trois étapes~:
+\begin{itemize}
+    \item \textbf{Traitement de la portée~:} Certaines études préfèrent supprimer les lignes de portées en passant par des méthodes telles que la suppression des maximas via une projection horizontale~\cite{Blostein1992}, ou l'utilisation de Dijkstra~\cite{dijkstra1959} pour trouver le chemin le plus court entre les pixels les plus éloignés~\cite{4402863}. Dans d'autres travaux, les portées sont gardées pour les étapes suivantes~\cite{ng1999embracing, pugin2006}.
+    
+    \item \textbf{Isolation des symboles~:} Une fois les portées traitées, les symboles doivent être segmentés. Une approche courante est la décomposition hiérarchique, où la suppression des lignes de portée permet d'extraire les têtes de notes, les hampes et les silences sous forme de primitives~\cite{NG199639, gocke2003building}. Certains travaux s'appuient ensuite sur des descripteurs pour identifier le symbole adéquat parmi un ensemble de candidats possibles~\cite{mahoney1982}. D'autres méthodes basées sur le fait de garder les lignes de portée utilisent des modèles de Markov cachés (HMM, pour \textit{Hidden Markov Models}) pour travailler sur des caractéristiques de bas niveau~\cite{pugin2006, 7814083}, robustes au bruit et aux variations de style.
+    
+    \item \textbf{Classification~:} Les objets isolés sont ensuite classifiés selon leur forme. Les méthodes traditionnelles incluent l'utilisation de profils de projection~\cite{fujinaga1988}, l'appariement de modèles (\textit{template matching})~\cite{gocke2003building}, ainsi que l'utilisation de classifieurs statistiques tels que les machines à vecteurs de support (SVM), les k-plus proches voisins (k-NN) ou les HMM. Des études comparatives ont d'ailleurs montré que les SVM offrent souvent de meilleures performances que les HMM pour cette tâche~\cite{rebelo2010}.
+\end{itemize}
+
+\paragraph{Reconstruction de l'Information Musicale}
+
+L'OMR étant un problème bidimensionnel, il est crucial d'identifier à la fois la séquence des symboles et leurs relations spatiales~\cite{shatri2020opticalmusicrecognitionstate}. Historiquement, cette étape repose sur la formalisation de connaissances musicales sous forme de règles grammaticales~\cite{bainbridge2003, couasnon1995}. Par exemple, une règle typique stipulera qu'une altération doit être placée avant une tête de note et à la même hauteur. L'inconvénient majeur de cette approche heuristique est que ces règles sont fréquemment violées, tout particulièrement dans les partitions manuscrites, ce qui limite la robustesse du système~\cite{shatri2020opticalmusicrecognitionstate}.
+
+\paragraph{Encodage de la Notation Musicale}
+
+La dernière étape consiste à encoder les informations extraites dans un format lisible par machine. Bien que le format MIDI soit souvent utilisé, il se limite principalement à la restitution sonore (hauteur, durée, vélocité) et ne permet pas de conserver la structure visuelle ou les relations entre les symboles~\cite{shatri2020opticalmusicrecognitionstate}. Pour un archivage structuré et une édition ultérieure, les systèmes d'OMR s'orientent vers des formats expressifs comme MusicXML~\cite{good2001}, qui se concentre sur la mise en page, ou MEI (\textit{Music Encoding Initiative})~\cite{roland2002}, reconnu pour sa capacité à capturer la sémantique musicale de manière hiérarchique.
+
+\newpage
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
