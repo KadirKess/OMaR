@@ -12,3 +12,13 @@ __pycache__/
 
 # Log files
 *.log
+
+# LaTeX temporary files
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.blg
+*.bbl
