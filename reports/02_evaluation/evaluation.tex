@@ -1,0 +1,140 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage[french]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,
+    urlcolor=black,
+    citecolor=black,
+}
+\title{\vspace{-1.5cm}\textbf{Reconnaissance Optique de Musique \\ \large Livrable 2~: Rapport sur l'évaluation}}
+    
+\author{Sacha Melin \\ Abdulkadir Kessaria}
+\date{}
+\begin{document}
+\maketitle
+
+L'état de l'art étant établi, il faut maintenant définir des méthodes d'évaluation permettant de mesurer l'efficacité de la reconnaissance optique de musique. Le principe retenu est d'évaluer \emph{séparément} chaque étape du processus~: de cette manière, les goulots d'étranglement potentiels peuvent être repérés précisément, ce qui met en lumière les points d'attention de la pipeline.\\
+
+Pour rappel, les étapes standard du processus, telles que décrites par Rebelo et al.~\cite{Rebelo2012-jn}, comprennent~: prétraitement de l'image, reconnaissance des symboles, reconstruction de l'information musicale, et encodage de la notation. La maturité des métriques est inégale et les deux dernières étapes de la pipeline restent un problème de recherche ouvert sans métriques claires~\cite{mengarelli2019,byrd2015}. L'ensemble des critères est synthétisé dans les tableaux regroupés en fin de document (Tableaux~\ref{tab:pretrait} à~\ref{tab:encodage}).
+
+% ======================================================================
+\paragraph{Prétraitement de l'image.}
+Le prétraitement (lissage, binarisation, redressement) est facilement évaluable dès lors qu'on dispose d'une \emph{source de vérité}~: une image de référence permettant la comparaison. Sur données synthétiques ou typographiées, cette vérité terrain se génère gratuitement. Les critères associés sont détaillés au Tableau~\ref{tab:pretrait}.
+
+% ======================================================================
+\paragraph{Reconnaissance des symboles.}
+Cette phase se décompose en traitement de la portée, isolation des symboles et classification. La suppression de portées et l'isolation se comparent au pixel ou à la boîte englobante~; la classification est un problème multiclasse supervisé où la matrice de confusion est l'information la plus utile pour cibler les améliorations. Les critères associés sont détaillés au Tableau~\ref{tab:symboles}.
+
+% ======================================================================
+\paragraph{Reconstruction de l'information musicale.}
+L'OMR étant un problème bidimensionnel, il faut identifier la séquence des symboles \emph{et} leurs relations spatiales~\cite{shatri2020opticalmusicrecognitionstate}. Cette étape porte donc sur les \emph{relations} entre symboles (quelle altération s'applique à quelle tête de note, hampe-vers-tête, ligatures). L'approche moderne représente la partition comme un \emph{graphe de notation} et évalue les arêtes. Le critère associé est détaillé au Tableau~\ref{tab:reconstruction}.
+
+% ======================================================================
+\paragraph{Encodage de la notation musicale (bout en bout).}
+La dernière étape encode l'information dans un format expressif (MusicXML~\cite{good2001}, MEI~\cite{roland2002}). C'est ici que le domaine n'a \emph{pas} de métrique prédéfinie~: c'est un problème ouvert publié~\cite{mengarelli2019,hajic2018intrinsic,torras2023}. La difficulté centrale est de définir une distance d'édition entre deux représentations de partition. Les critères associés sont détaillés au Tableau~\ref{tab:encodage}.
+
+% ======================================================================
+\paragraph{Stratégie globale.}
+Le plan retenu est d'évaluer chaque module avec sa métrique native - F-mesure DIBCO $\rightarrow$ F1 pixel de portée $\rightarrow$ mAP de détection $\rightarrow$ matrice de confusion / F1 de classification - puis d'ajouter \emph{une} métrique de bout en bout (SER si la sortie est monophonique, TEDn si l'on cible MusicXML). L'évaluation par module localise où les erreurs apparaissent~; le score de bout en bout est ce qui se compare aux autres systèmes. L'emploi de partitions synthétiques/typographiées pour au moins une partie du jeu de test résout le problème de vérité terrain des étapes de prétraitement qui paraissent autrement ``non mesurables''.
+
+% ======================================================================
+\paragraph{Base d'évaluation.}
+Nous avons décidé de nous concentrer sur les partitions \emph{non manuscrites} (typographiées). Nous nous appuyons sur des bases publiques de référence, complétées par des partitions \emph{synthétiques} générées par nos soins (vérité terrain parfaite et gratuite pour le prétraitement, la portée et le redressement via déformations contrôlées).
+
+\begin{itemize}
+  \item \textbf{DeepScoresV2}~\cite{tuggener2020deepscores} - partitions typographiées pour la détection d'objets~; $\sim$151\,M instances, 135 classes. Vérité terrain au niveau boîte et segmentation.\\
+  Accès~: \url{https://zenodo.org/records/4012193} - licence \textbf{CC BY 4.0}.
+  \item \textbf{PrIMuS / Camera-PrIMuS}~\cite{calvozaragoza2018primus} - 87\,678 \emph{incipits} monophoniques typographiés, fournis en PNG, MIDI, MEI et deux encodages (sémantique et agnostique)~; idéal pour le SER de bout en bout. Camera-PrIMuS ajoute des distorsions simulant une photo.\\
+  Accès~: \url{https://grfia.dlsi.ua.es/primus/} (téléchargement libre, citation requise).
+  \item \textbf{DIBCO / H-DIBCO}~\cite{dibco2011} - images dégradées et vérités terrain binaires de référence, dédiées à l'évaluation de la binarisation.\\
+  Accès~: \url{https://vc.ee.duth.gr/h-dibco2018/} (librement disponibles pour la recherche).
+\end{itemize}
+
+% ======================================================================
+\section*{Tableaux récapitulatifs}
+\renewcommand{\arraystretch}{0.95}
+\setlength{\tabcolsep}{4pt}
+\small
+
+\begin{center}
+\refstepcounter{table}\label{tab:pretrait}%
+\begin{tabular}{@{}p{2.6cm} p{8.9cm} p{3.4cm}@{}}
+\hline
+\textbf{Outil} & \textbf{Description} & \textbf{Score acceptable} \\
+\hline
+F-mesure (pixel) & Moyenne harmonique de la précision et du rappel calculés sur les pixels d'encre, comparés à une image binaire de référence. Caractérise l'exactitude globale de la binarisation. & $\in[0,1]$, plus haut = mieux~; $>0{,}90$ pour les bons systèmes DIBCO. \\
+\hline
+PSNR & $10\log_{10}(C^2/\mathrm{MSE})$ en décibels~: proximité globale à la vérité terrain ($C$ = amplitude max, MSE = erreur quadratique moyenne). & dB, plus haut = mieux~; $>20$~dB excellent, $\sim12$~dB médiocre. \\
+\hline
+DRD & \emph{Distance Reciprocal Distortion}~: erreurs pondérées par les distances réciproques sur un voisinage $5\times5$, normalisées par le nombre de blocs $8\times8$ non uniformes. Calée sur la perception visuelle humaine. & Distorsion, plus bas = mieux~; $0$ = parfait, $<3$ très bon. \\
+\hline
+Erreur angulaire & Angle résiduel $|\hat\theta-\theta|$ après correction d'une rotation synthétique d'angle connu $\theta$. Caractérise la précision du redressement. & degrés, plus bas = mieux~; $<0{,}5^{\circ}$ excellent. \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: critères d'évaluation du prétraitement.
+\end{center}
+
+\medskip
+\begin{center}
+\refstepcounter{table}\label{tab:symboles}%
+\begin{tabular}{@{}p{3.0cm} p{8.5cm} p{3.4cm}@{}}
+\hline
+\textbf{Outil} & \textbf{Description} & \textbf{Score acceptable} \\
+\hline
+F1 pixel (portée)~\cite{dalitz2008,fornes2013grec} & Classification pixel par pixel ``portée~/~hors-portée''~: on compare le masque de portée prédit à la vérité terrain (précision, rappel, F1 sur la classe ``portée''). & $\in[0,1]$, plus haut = mieux~; $>0{,}95$ sur imprimé propre. \\
+\hline
+P/R/F1 @IoU (isolation) & Détection d'objets~: boîtes prédites appariées aux boîtes de vérité terrain via l'IoU à un seuil fixe (typ.\ $0{,}5$). & $\in[0,1]$, plus haut = mieux. \\
+\hline
+mAP (isolation) & \emph{mean Average Precision}~: moyenne, sur les classes, de l'aire sous la courbe précision--rappel. Capacité à localiser \emph{et} étiqueter. & $\in[0,1]$, $1$ = détection idéale. \\
+\hline
+Exactitude (classification)~\cite{rebelo2010} & Proportion de symboles isolés correctement étiquetés~; complétée par précision/rappel/F1 par classe. & $\in[0,1]$, $>0{,}90$ sur symboles imprimés isolés. \\
+\hline
+Matrice de confusion (classification) & Tableau vérité terrain $\times$ prédiction~: révèle \emph{quelles} classes sont confondues (p.~ex.\ silence de noire vs.\ de croche). & Diagonale forte, hors-diagonale faible. \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: critères d'évaluation de la reconnaissance des symboles.
+\end{center}
+
+\medskip
+\begin{center}
+\refstepcounter{table}\label{tab:reconstruction}%
+\begin{tabular}{@{}p{3.0cm} p{8.5cm} p{3.4cm}@{}}
+\hline
+\textbf{Outil} & \textbf{Description} & \textbf{Score acceptable} \\
+\hline
+P/R/F1 sur les arêtes~\cite{wang2024complete} & On compare l'ensemble des arêtes (relations) du graphe prédit à celles de la vérité terrain~; une arête est correcte si la même relation relie les deux mêmes objets. En aval des erreurs de détection. & $\in[0,1]$, plus haut = mieux. \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: critère d'évaluation de la reconstruction.
+\end{center}
+
+\medskip
+\begin{center}
+\refstepcounter{table}\label{tab:encodage}%
+\begin{tabular}{@{}p{2.6cm} p{8.9cm} p{3.4cm}@{}}
+\hline
+\textbf{Outil} & \textbf{Description} & \textbf{Score acceptable} \\
+\hline
+SER~\cite{calvozaragoza2018primus} & \emph{Symbol Error Rate}~: distance d'édition (Levenshtein) sur une séquence linéarisée de symboles, normalisée par la longueur de la référence. Analogue du \emph{Word Error Rate}. & $\geq 0$, plus bas = mieux~; $0$ = parfait, $0{,}1 \approx$ 1 symbole/10 à corriger. \\
+\hline
+Distance normalisée & Distance d'édition divisée par la longueur de la plus longue séquence. & $\in[0,1]$, plus bas = mieux. \\
+\hline
+TEDn~\cite{riosvila2024tedn} & \emph{Tree Edit Distance} normalisée (Zhang--Shasha) adaptée aux arbres MusicXML/MEI~; corrèle avec l'effort de correction attendu par un éditeur humain (type MuseScore). & $\geq 0$, plus bas = mieux~; $0$ = arbres identiques. \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: critères d'évaluation de l'encodage / bout en bout. La métrique OMR-NED~\cite{martinezsevilla2025omrned} raffine SER avec un profilage par catégorie de symbole.
+\end{center}
+
+\normalsize
+
+\newpage
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
