@@ -13,16 +13,13 @@ class Preprocessor:
         self.image = skimage.filters.gaussian(self.image, sigma=sigma)
         return self.image
 
-    def binarization(self, window_size=11, k=0.08):
+    def binarization(self, window_size=31, k=0.12):
         """
-        Binarizes the image using Sauvola's local adaptive thresholding.
+        Binarizes the image with Sauvola local adaptive thresholding and
+        returns it as uint8 (ink = 0, background = 255).
 
-        Sauvola computes a per-pixel threshold from the local mean and
-        standard deviation, which keeps flat background regions clean
-        instead of turning paper texture into noise (as tiled Otsu does).
-
-        ``window_size`` (odd) should roughly match the stroke/staff
-        spacing; higher ``k`` yields less foreground.
+        ``window_size`` (odd) roughly matches the stroke/staff spacing;
+        higher ``k`` yields less foreground.
         """
         if self.image.ndim == 3:
             self.image = skimage.color.rgb2gray(self.image)
@@ -30,15 +27,18 @@ class Preprocessor:
         threshold = skimage.filters.threshold_sauvola(
             self.image, window_size=window_size, k=k
         )
-        self.image = self.image > threshold
+        self.image = np.where(self.image > threshold, 255, 0).astype(np.uint8)
+        return self.image
 
     def apply(self):
         """
         Applies the preprocessing steps to the image.
         """
-        self.gaussian_filter(sigma=1)
+        self.gaussian_filter(sigma=0.5)
         self.binarization()
 
+        # Erosion then dilation on an ink=0 image is a closing of the ink:
+        # it fills small gaps in strokes without removing thin features.
         footprint = skimage.morphology.disk(2)
         self.image = skimage.morphology.erosion(self.image, footprint=footprint)
         self.image = skimage.morphology.dilation(self.image, footprint=footprint)

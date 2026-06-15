@@ -372,6 +372,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "scikit-image" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
@@ -379,6 +380,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.11.0" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "scikit-image", specifier = ">=0.26.0" },
+    { name = "scipy", specifier = ">=1.17.1" },
 ]
 
 [[package]]
