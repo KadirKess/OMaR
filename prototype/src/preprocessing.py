@@ -1,5 +1,6 @@
 import numpy as np
 import skimage
+import scipy
 
 
 class Preprocessor:
@@ -29,6 +30,23 @@ class Preprocessor:
         )
         self.image = np.where(self.image > threshold, 255, 0).astype(np.uint8)
         return self.image
+
+    def get_skew_angle(self, image):
+        # convert to edges
+        edges = skimage.feature.canny(image)
+        # Classic straight-line Hough transform between 0.1 - 180 degrees.
+        tested_angles = np.deg2rad(np.arange(0.1, 180.0))
+        h, theta, d = skimage.transform.hough_line(edges, theta=tested_angles)
+
+        # find line peaks and angles
+        accum, angles, dists = skimage.transform.hough_line_peaks(h, theta, d)
+
+        # round the angles to 2 decimal places and find the most common angle.
+        most_common_angle = scipy.stats.mode(np.around(angles, decimals=2))[0]
+
+        # convert the angle to degree for rotation.
+        skew_angle = np.rad2deg(most_common_angle - np.pi / 2)
+        return skew_angle
 
     def apply(self):
         """

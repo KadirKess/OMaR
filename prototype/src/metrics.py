@@ -94,6 +94,19 @@ def drd(pred_fg, gt_fg, block_size=8):
     return drd_sum / nubn
 
 
+def angular_error(estimated_deg, true_deg):
+    """
+    Residual angular error ``|theta_hat - theta|`` in degrees between an
+    estimated skew angle and the known applied rotation.
+
+    The difference is folded into ``[-90, 90]`` modulo 180 degrees, so an
+    estimate that is correct up to the 180-degree ambiguity of a line
+    orientation counts as exact. Lower is better (<0.5 deg is excellent).
+    """
+    err = (float(estimated_deg) - float(true_deg) + 90.0) % 180.0 - 90.0
+    return abs(err)
+
+
 def scores(pred, gt):
     """
     Computes the DIBCO binarization metrics (F-measure, PSNR, DRD) of a
@@ -113,9 +126,7 @@ def scores(pred, gt):
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f_measure = (
-        2 * precision * recall / (precision + recall)
-        if (precision + recall)
-        else 0.0
+        2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
     )
     return {
         "precision": precision,
@@ -124,3 +135,20 @@ def scores(pred, gt):
         "psnr": psnr(pred_fg, gt_fg),
         "drd": drd(pred_fg, gt_fg),
     }
+
+
+def angular_error(pred_angle, gt_angle):
+    """
+    Computes the angular error between two angles in degrees.
+
+    The angular error is defined as the absolute difference between the two
+    angles, wrapped to the range [0, 180] degrees. Lower is better (0 = perfect).
+    """
+    pred_angle = np.asarray(pred_angle)
+    gt_angle = np.asarray(gt_angle)
+
+    # Compute the absolute difference and wrap to [0, 180]
+    diff = np.abs(pred_angle - gt_angle) % 360
+    angular_error = np.minimum(diff, 360 - diff)
+
+    return float(angular_error)
