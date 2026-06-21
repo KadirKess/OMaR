@@ -6,6 +6,7 @@ import skimage
 
 
 DATA_DIR = Path(__file__).parent / "data" / "binarisation"
+SCORE_DIR = Path(__file__).parent / "data" / "ds2_dense" / "images"
 
 
 def test_preprocessing():
@@ -27,8 +28,29 @@ def test_preprocessing():
     plt.show()
 
 
+def test_staff_detection():
+    # Per-row Dijkstra is slow, so crop to a single staff system.
+    img = skimage.io.imread(SCORE_DIR / "lg-169480697-aug-gonville--page-8.png")
+
+    pre = Preprocessor(img)
+    pre.apply()
+    overlay = pre.draw_staff(corrcoef=0.5)
+
+    plt.figure(figsize=(16, 8))
+
+    plt.subplot(1, 2, 1)
+    plt.imshow(pre.image, cmap="gray")
+    plt.title("Binarized")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(overlay)
+    plt.title("Detected staff lines")
+
+    plt.show()
+
+
 def main():
-    test_preprocessing()
+    test_staff_detection()
 
 
 if __name__ == "__main__":
