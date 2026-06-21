@@ -28,13 +28,14 @@ def test_preprocessing():
     plt.show()
 
 
-def test_staff_detection():
-    # Per-row Dijkstra is slow, so crop to a single staff system.
+def test_staff_detection_projection():
     img = skimage.io.imread(SCORE_DIR / "lg-169480697-aug-gonville--page-8.png")
 
     pre = Preprocessor(img)
     pre.apply()
-    overlay = pre.draw_staff(corrcoef=0.5)
+    rows = pre.staffline_detection_projection(frac=0.5)
+    print(f"{len(rows)} staff lines detected at rows: {list(rows)}")
+    overlay = pre.draw_staff(rows)
 
     plt.figure(figsize=(16, 8))
 
@@ -44,13 +45,13 @@ def test_staff_detection():
 
     plt.subplot(1, 2, 2)
     plt.imshow(overlay)
-    plt.title("Detected staff lines")
+    plt.title(f"Projection: {len(rows)} staff lines")
 
     plt.show()
 
 
 def main():
-    test_staff_detection()
+    test_staff_detection_projection()
 
 
 if __name__ == "__main__":
