@@ -258,24 +258,6 @@ class Preprocessor:
 
         return canvas
 
-    def apply_morphological_closing(self, disk_radius=2):
-        """
-        Closes the image with a disk of ``disk_radius`` to fill small gaps.
-        """
-        footprint = morphology.disk(disk_radius)
-        self.image = morphology.erosion(self.image, footprint=footprint)
-        self.image = morphology.dilation(self.image, footprint=footprint)
-        return self.image
-
-    def apply_morphological_opening(self, disk_radius=2):
-        """
-        Opens the image with a disk of ``disk_radius`` to remove small noise.
-        """
-        footprint = morphology.disk(disk_radius)
-        self.image = morphology.dilation(self.image, footprint=footprint)
-        self.image = morphology.erosion(self.image, footprint=footprint)
-        return self.image
-
     def draw_barlines(self, cols=None, color=(0, 0, 255), canvas=None):
         """
         Returns an RGB copy with the barlines drawn on top. Pass ``canvas`` to
