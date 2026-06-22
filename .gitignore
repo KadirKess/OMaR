@@ -7,8 +7,11 @@ __pycache__/
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
+# dataset
+**/data
+
 # Virtual environment
-**/venv/
+**/.venv/
 
 # Log files
 *.log
