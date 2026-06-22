@@ -65,9 +65,7 @@ def main():
     for name, path, true_angle in find_images(DATA_DIR):
         estimated, error = evaluate_one(path, true_angle)
         results.append(error)
-        print(
-            f"{name:>10} {true_angle:>10.2f} {estimated:>10.2f} {error:>10.4f}"
-        )
+        print(f"{name:>10} {true_angle:>10.2f} {estimated:>10.2f} {error:>10.4f}")
 
     if not results:
         print("no images found in", DATA_DIR)
