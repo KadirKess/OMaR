@@ -10,6 +10,9 @@ __pycache__/
 # dataset
 **/data
 
+# generated primitive-splitting diagnostics
+/prototype/output/splitting_pages/*.png
+
 # Virtual environment
 **/.venv/
 
