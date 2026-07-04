@@ -1,6 +1,6 @@
 from pathlib import Path
 from matplotlib import pyplot as plt
-from src.preprocessing import Preprocessor
+from src.preprocessing.preprocessor import Preprocessor
 
 import skimage
 from skimage import morphology

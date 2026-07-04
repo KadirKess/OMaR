@@ -14,8 +14,8 @@ from pathlib import Path
 
 import skimage
 
-from src.metrics import scores
-from src.preprocessing import Preprocessor
+from src.preprocessing.metrics import scores
+from src.preprocessing.preprocessor import Preprocessor
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "binarisation"
 

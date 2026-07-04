@@ -18,8 +18,8 @@ from pathlib import Path
 import numpy as np
 import skimage
 
-from src.metrics import angular_error
-from src.preprocessing import Preprocessor
+from src.preprocessing.metrics import angular_error
+from src.preprocessing.preprocessor import Preprocessor
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "hough_transform"
 
