@@ -202,6 +202,7 @@ class PrimitiveSplitter:
         staffless_mask: np.ndarray,
         staff_space: float,
         staff_line: float,
+        staff_lines: tuple[float, ...] = (),
         original_mask: np.ndarray | None = None,
     ) -> PrimitiveSplit:
         """Split one isolated compound."""
@@ -330,4 +331,5 @@ class PrimitiveSplitter:
             reasons=tuple(reasons),
             staff_space=float(staff_space),
             staff_line=float(staff_line),
+            staff_lines=tuple(float(y) for y in staff_lines),
         )

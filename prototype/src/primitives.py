@@ -53,6 +53,8 @@ class PrimitiveSplit:
     reasons: tuple[str, ...] = ()
     staff_space: float = 0.0
     staff_line: float = 0.0
+    # y positions of the staff lines in the same pixel frame as the primitive masks
+    staff_lines: tuple[float, ...] = field(default_factory=tuple)
 
     def of_kind(self, kind: PrimitiveKind) -> tuple[Primitive, ...]:
         return tuple(p for p in self.primitives if p.kind == kind)
