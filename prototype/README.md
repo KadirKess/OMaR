@@ -1,7 +1,39 @@
 # Prototype
 
-The preprocessing pipeline binarizes and deskews score images, detects staff
-geometry by projection, and removes staff lines.
+End-to-end OMR prototype for the DeepScores dataset: binarize and deskew score
+images, detect staff geometry by projection, remove staff lines, split raster
+ink into primitives (noteheads, stems, beams), rewrite them into a notation
+graph, and assign each note a duration and pitch. Each stage ships its own
+metric so a regression can be localized.
+
+## Scope
+
+The benchmark is restricted to **blacks and croches only** (filled quarter
+noteheads and beamed eighth notes, plus their stems and beams). Clefs, key
+signatures, accidentals, rests, flags, open/half/whole noteheads, and small
+(grace) heads are out of scope and excluded from both predictions and the
+ground truth.
+
+## Layout
+
+```
+src/
+  models/            shared data types (primitives, notation graph)
+  preprocessing/     stage 1: binarize, deskew, staff handling, DIBCO metrics
+  symbols/           stage 2: primitive splitting, mask evaluation, visualization
+  deepscores/        dataset loader + DeepScores-format I/O
+  reconstruction/    stage 3: assembly (graph rewrite) + semantics (duration/pitch)
+benchmarks/
+  _metrics.py        pure detection/classification/SER metrics
+  pipeline_eval.py  end-to-end staged benchmark
+tests/               unit tests for splitting, assembly, semantics, metrics, I/O
+```
+
+Run the test suite with:
+
+```sh
+uv run python -m unittest discover -s tests -v
+```
 
 ## Primitive splitting
 
@@ -15,7 +47,7 @@ The splitter currently supports:
 Other foreground remains `unknown`. Results are `accepted`, `uncertain` when
 unknown ink remains, or `rejected` when the topology is unsupported.
 
-### Evaluation
+### Splitting evaluation
 
 DeepScores semantic annotations select benchmark crops, remove annotated staff
 pixels, and provide ground-truth masks. The splitter itself receives raster ink.
@@ -28,3 +60,36 @@ uv run python -m benchmarks.render_splitting_pages --pages 2
 ```
 
 The page renderer writes PNG diagnostics to `output/splitting_pages/`.
+
+## End-to-end staged benchmark
+
+`benchmarks/pipeline_eval.py` runs the full pipeline (preprocess -> split ->
+assemble -> assign durations) on each DeepScores test page and reports one
+metric per stage so a regression can be localized:
+
+| Metric | Stage | What it localizes |
+|---|---|---|
+| Mask P/R/F1 @IoU | 5 splitting | pixel-level primitive segmentation quality |
+| mAP @IoU | 5 detection | bbox-level detection (see note on thin classes) |
+| Accuracy + confusion matrix | 5 classification | notehead OnLine/InSpace + stem + beam |
+| Edge P/R/F1 | 6 reconstruction | head-to-stem and stem-to-beam pairing |
+| SER (duration) | end-to-end | quarter/eighth sequence vs. ground truth |
+
+The ground truth is filtered to the crops actually processed, so mAP/accuracy
+measure only the symbols the pipeline attempted (otherwise recall would be
+capped near zero on long pages).
+
+**Thin-class caveat.** DeepScores annotates stems as 1-pixel-wide boxes. At
+IoU=0.5 a 4-pixel-wide predicted stem can't score above ~0.25 IoU even when
+correct, so stem mAP is structurally deflated. Notehead mAP (wide shapes) is
+the reliable signal. Pass `--iou-threshold 0.3` for a more lenient view.
+
+```sh
+uv run python -m benchmarks.pipeline_eval --split test --limit 50
+uv run python -m benchmarks.pipeline_eval --split test --limit 50 \
+    --iou-threshold 0.3 --write-json-pages --output output/pipeline_eval
+```
+
+The stdout table and a JSON report land in `output/pipeline_eval/report.json`
+by default (one `page_<id>.json` per page with `--write-json-pages`).
+
