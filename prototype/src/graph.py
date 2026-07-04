@@ -12,12 +12,25 @@ class Relation(StrEnum):
     ALIGNED_VERTICAL = "aligned_vertical"
 
 
+class NodeKind(StrEnum):
+    """Kind of node in a graph. superset of PrimitiveKind."""
+
+    NOTEHEAD = "notehead"
+    STEM = "stem"
+    BEAM = "beam"
+    UNKNOWN = "unknown"
+    NOTE = "note"
+    CHORD = "chord"
+    BEAMED_GROUP = "beamed_group"
+    MEASURE = "measure"
+
+
 @dataclass
 class Node:
     """A node in the graph."""
 
     id: int
-    kind: PrimitiveKind
+    kind: NodeKind
     primitive: Primitive | None
     attrs: dict = field(default_factory=dict)
 

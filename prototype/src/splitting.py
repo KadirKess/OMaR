@@ -202,8 +202,8 @@ class PrimitiveSplitter:
         staffless_mask: np.ndarray,
         staff_space: float,
         staff_line: float,
-        staff_lines: tuple[float, ...] = (),
         original_mask: np.ndarray | None = None,
+        staff_lines: tuple[float, ...] = (),
     ) -> PrimitiveSplit:
         """Split one isolated compound."""
         ink = np.asarray(staffless_mask, dtype=bool)
