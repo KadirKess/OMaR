@@ -93,3 +93,21 @@ uv run python -m benchmarks.pipeline_eval --split test --limit 50 \
 The stdout table and a JSON report land in `output/pipeline_eval/report.json`
 by default (one `page_<id>.json` per page with `--write-json-pages`).
 
+## MIDI export
+
+`benchmarks/midi_export.py` runs the pipeline on a fixed set of clean
+DeepScores test pages and writes a monophonic MIDI file per page. The page
+IDs (`CLEAN_PAGE_IDS` in the script) were selected by scanning the dense
+annotations for pages whose only notational symbols are blacks and croches
+-- no accidentals, no open/half/whole noteheads, no chords, and a single
+clef family per page (treble) so the hardcoded clef in `assign_pitches` is
+correct.
+
+```sh
+uv run python -m benchmarks.midi_export --limit 6
+```
+
+Each page produces `output/midi/<image_id>.mid` (format-0 SMF, 480 PPQ,
+120 BPM) and a sidecar `<image_id>.json` with the duration and pitch token
+sequences the pipeline emitted.
+
