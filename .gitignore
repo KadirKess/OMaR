@@ -13,6 +13,10 @@ __pycache__/
 # generated primitive-splitting diagnostics
 /prototype/output/splitting_pages/*.png
 
+# pipeline benchmark output + experiment scripts
+/prototype/output/
+/prototype/tmp/
+
 # Virtual environment
 **/.venv/
 
@@ -28,3 +32,7 @@ __pycache__/
 *.fls
 *.blg
 *.bbl
+
+# Temporary files
+
+AGENTS.md

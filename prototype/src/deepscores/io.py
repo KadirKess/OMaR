@@ -9,7 +9,7 @@ import numpy as np
 from src.deepscores.dataset import DeepScoresDataset
 from src.models.graph import NodeKind, NotationGraph
 from src.models.primitives import PrimitiveKind
-from src.reconstruction.semantics import EIGHTH, QUARTER
+from src.reconstruction.semantics import EIGHTH, QUARTER, _step_to_pitch
 
 
 SCOPED_CATEGORY_NAMES = (
@@ -57,6 +57,7 @@ class PageIO:
     annotations: tuple[Annotation, ...]
     graph_edges: tuple[GraphEdgeSpec, ...]
     duration_sequence: tuple[str, ...]
+    pitch_sequence: tuple[str, ...] = ()
 
 
 def _bbox_distance(a, b) -> float:
@@ -72,13 +73,14 @@ def _link_distance(staff_space: float) -> float:
 
 
 def _notehead_cat_name(head_bbox, staff_lines, staff_line) -> str:
-    # OnLine if the head center sits within one staff-line thickness of a staff line;
-    # without staff lines we default to OnLine (cannot disambiguate).
+    # head_bbox and staff_lines must be in the same (page) frame; OnLine if the
+    # head center sits within two staff-line thicknesses of a recovered line.
+    # Tolerance absorbs projection/deskew residuals in staff-line recovery.
     if not staff_lines:
         return "noteheadBlackOnLine"
     x0, y0, x1, y1 = head_bbox
     cy = (y0 + y1) / 2.0
-    tol = max(1.0, float(staff_line))
+    tol = max(1.0, 2.0 * float(staff_line))
     on_line = any(abs(cy - y) <= tol for y in staff_lines)
     return "noteheadBlackOnLine" if on_line else "noteheadBlackInSpace"
 
@@ -90,16 +92,17 @@ def _annotations_from_split(split, crop_index, origin, staff_lines, staff_line):
     for prim_idx, prim in enumerate(split.primitives):
         if prim.kind == PrimitiveKind.UNKNOWN:
             continue
+        x0, y0, x1, y1 = prim.bbox
+        page_bbox = (float(x0 + ox), float(y0 + oy), float(x1 + ox), float(y1 + oy))
         if prim.kind == PrimitiveKind.NOTEHEAD:
-            cat_name = _notehead_cat_name(prim.bbox, staff_lines, staff_line)
+            cat_name = _notehead_cat_name(page_bbox, staff_lines, staff_line)
         else:
             cat_name = _PRIMITIVE_TO_CAT[prim.kind]
         ann_id = f"pred-{crop_index}-{prim_idx}"
-        x0, y0, x1, y1 = prim.bbox
         out.append(
             Annotation(
                 ann_id=ann_id,
-                bbox=(float(x0 + ox), float(y0 + oy), float(x1 + ox), float(y1 + oy)),
+                bbox=page_bbox,
                 cat_name=cat_name,
                 area=int(prim.mask.sum()),
                 confidence=float(prim.confidence),
@@ -124,23 +127,50 @@ def _edges_from_split(split, id_map) -> list[GraphEdgeSpec]:
     return out
 
 
-def _duration_sequence_from_graph(graph: NotationGraph) -> tuple[str, ...]:
-    # Reading order: top-level note/chord/beamed_group nodes by x_order;
-    # beamed groups expand to their members (members retain duration attrs after absorb).
+def _node_x(node, origin_x):
+    head = node.attrs.get("notehead")
+    if head is None:
+        heads = node.attrs.get("noteheads") or ()
+        head = heads[0] if heads else None
+    if head is None:
+        return float(origin_x)
+    return float(head.bbox[0] + origin_x)
+
+
+def _duration_sequence_from_graph(graph, origin=(0, 0)) -> list[tuple[float, str]]:
+    ox, _ = origin
     nodes = [
         n
         for n in graph.nodes.values()
         if n.kind in (NodeKind.NOTE, NodeKind.CHORD, NodeKind.BEAMED_GROUP)
     ]
     nodes.sort(key=lambda n: n.attrs.get("x_order", 0))
-    tokens = []
+    pairs = []
     for n in nodes:
         if n.kind == NodeKind.BEAMED_GROUP:
             for m in n.attrs.get("members", ()):
-                tokens.append(_DURATION_TOKENS.get(m.attrs.get("duration"), "?"))
+                pairs.append((_node_x(m, ox), _DURATION_TOKENS.get(m.attrs.get("duration"), "?")))
         else:
-            tokens.append(_DURATION_TOKENS.get(n.attrs.get("duration"), "?"))
-    return tuple(tokens)
+            pairs.append((_node_x(n, ox), _DURATION_TOKENS.get(n.attrs.get("duration"), "?")))
+    return pairs
+
+
+def _pitch_sequence_from_graph(graph, origin=(0, 0)) -> list[tuple[float, str]]:
+    ox, _ = origin
+    nodes = [
+        n
+        for n in graph.nodes.values()
+        if n.kind in (NodeKind.NOTE, NodeKind.CHORD, NodeKind.BEAMED_GROUP)
+    ]
+    nodes.sort(key=lambda n: n.attrs.get("x_order", 0))
+    pairs = []
+    for n in nodes:
+        if n.kind == NodeKind.BEAMED_GROUP:
+            for m in n.attrs.get("members", ()):
+                pairs.append((_node_x(m, ox), m.attrs.get("pitch", "?")))
+        else:
+            pairs.append((_node_x(n, ox), n.attrs.get("pitch", "?")))
+    return pairs
 
 
 def build_predicted_page(
@@ -151,7 +181,8 @@ def build_predicted_page(
         staff_lines_per_crop = [()] * len(crop_results)
     all_anns: list[Annotation] = []
     all_edges: list[GraphEdgeSpec] = []
-    all_durations: list[str] = []
+    all_duration_pairs: list[tuple[float, str]] = []
+    all_pitch_pairs: list[tuple[float, str]] = []
     for crop_index, ((split, graph, origin), staff_lines) in enumerate(
         zip(crop_results, staff_lines_per_crop)
     ):
@@ -160,7 +191,10 @@ def build_predicted_page(
         )
         all_anns.extend(anns)
         all_edges.extend(_edges_from_split(split, id_map))
-        all_durations.extend(_duration_sequence_from_graph(graph))
+        all_duration_pairs.extend(_duration_sequence_from_graph(graph, origin))
+        all_pitch_pairs.extend(_pitch_sequence_from_graph(graph, origin))
+    all_duration_pairs.sort(key=lambda p: p[0])
+    all_pitch_pairs.sort(key=lambda p: p[0])
     return PageIO(
         image_id=str(image["id"]),
         filename=image["filename"],
@@ -168,8 +202,24 @@ def build_predicted_page(
         height=int(image["height"]),
         annotations=tuple(all_anns),
         graph_edges=tuple(all_edges),
-        duration_sequence=tuple(all_durations),
+        duration_sequence=tuple(t for _, t in all_duration_pairs),
+        pitch_sequence=tuple(t for _, t in all_pitch_pairs),
     )
+
+
+def _nearest_system_bottom(staff_rows, y_center):
+    rows = sorted(float(r) for r in staff_rows)
+    if len(rows) <= 5:
+        return max(rows) if rows else None
+    best_bottom, best_dist = None, float("inf")
+    for i in range(len(rows) - 4):
+        window = rows[i : i + 5]
+        window_center = (window[0] + window[-1]) / 2.0
+        d = abs(window_center - y_center)
+        if d < best_dist:
+            best_dist = d
+            best_bottom = window[-1]
+    return best_bottom
 
 
 def derive_ground_truth(
@@ -177,6 +227,7 @@ def derive_ground_truth(
     image_id: str,
     staff_space: float | None = None,
     bbox_filter=None,
+    staff_lines: tuple[float, ...] = (),
 ) -> PageIO:
     # bbox_filter: optional predicate (a_bbox -> bool) that scopes the GT to a
     # region of interest (e.g. the crops we actually processed). When provided,
@@ -227,6 +278,7 @@ def derive_ground_truth(
 
     edges: list[GraphEdgeSpec] = []
     head_tokens: list[tuple[float, str]] = []
+    pitch_tokens: list[tuple[float, str]] = []
     for i, name in enumerate(cat_names):
         if name not in ("noteheadBlackOnLine", "noteheadBlackInSpace"):
             continue
@@ -244,8 +296,17 @@ def derive_ground_truth(
                 token = "eighth"
         head_tokens.append((bboxes[i][0], token))
 
+        if staff_lines:
+            cy = (bboxes[i][1] + bboxes[i][3]) / 2.0
+            ref_y = _nearest_system_bottom(staff_lines, cy)
+            if ref_y is not None:
+                step = round((ref_y - cy) / (staff_space / 2.0))
+                pitch_tokens.append((bboxes[i][0], _step_to_pitch(step, "E", 4)))
+
     head_tokens.sort(key=lambda x: x[0])
     duration_sequence = tuple(t for _, t in head_tokens)
+    pitch_tokens.sort(key=lambda x: x[0])
+    pitch_sequence = tuple(t for _, t in pitch_tokens)
 
     return PageIO(
         image_id=str(image["id"]),
@@ -255,6 +316,7 @@ def derive_ground_truth(
         annotations=annotations,
         graph_edges=tuple(edges),
         duration_sequence=duration_sequence,
+        pitch_sequence=pitch_sequence,
     )
 
 

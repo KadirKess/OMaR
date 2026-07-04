@@ -17,7 +17,7 @@ from src.deepscores.io import (
 )
 from src.reconstruction.assembly import compute_staff_positions, graph_from_split, run_rewrite
 from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
-from src.reconstruction.semantics import assign_durations
+from src.reconstruction.semantics import assign_durations, assign_pitches
 
 
 def make_primitive(kind, x0, y0, x1, y1, confidence=1.0):
@@ -72,6 +72,43 @@ class NoteheadCatNameTests(unittest.TestCase):
     def test_defaults_to_on_line_without_staff_lines(self):
         bbox = (0, 41, 14, 49)
         self.assertEqual(_notehead_cat_name(bbox, (), staff_line=2.0), "noteheadBlackOnLine")
+
+
+class PitchSequenceTests(unittest.TestCase):
+    def _finish_graph(self, split):
+        graph = graph_from_split(split)
+        compute_staff_positions(graph)
+        run_rewrite(graph)
+        assign_durations(graph)
+        assign_pitches(graph)
+        return graph
+
+    def _image(self):
+        return {"id": 42, "filename": "page.png", "width": 200, "height": 200}
+
+    def test_quarter_note_pitch_is_e4(self):
+        split = quarter_note_split()
+        graph = self._finish_graph(split)
+        page = build_predicted_page(
+            self._image(),
+            [(split, graph, (0, 0))],
+            staff_lines_per_crop=[(10.0, 20.0, 30.0, 40.0, 50.0)],
+            staff_line=2.0,
+        )
+        self.assertEqual(page.pitch_sequence, ("E4",))
+
+    def test_beamed_pair_yields_two_pitches(self):
+        split = beamed_pair_split()
+        graph = self._finish_graph(split)
+        page = build_predicted_page(
+            self._image(),
+            [(split, graph, (0, 0))],
+            staff_lines_per_crop=[(10.0, 20.0, 30.0, 40.0, 50.0)],
+            staff_line=2.0,
+        )
+        self.assertEqual(len(page.pitch_sequence), 2)
+        for pitch in page.pitch_sequence:
+            self.assertIn(pitch[0], "CDEFGAB")
 
 
 class BuildPredictedPageTests(unittest.TestCase):

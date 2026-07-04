@@ -26,7 +26,7 @@ from src.reconstruction.assembly import (
     graph_from_split,
     run_rewrite,
 )
-from src.reconstruction.semantics import assign_durations
+from src.reconstruction.semantics import assign_durations, assign_pitches
 from src.symbols.evaluation import evaluate_split
 from src.symbols.splitter import PrimitiveSplitter
 
@@ -73,11 +73,12 @@ def _process_crop(splitter, sample, staff_rows, staff_line):
     crop_y_center = sample.origin[1] + sample.staffless_mask.shape[0] / 2.0
     system_lines = _system_for_crop(staff_rows, crop_y_center)
     graph = graph_from_split(result)
-    graph.staff_lines = system_lines
+    graph.staff_lines = tuple(y - sample.origin[1] for y in system_lines)
     graph.staff_space = sample.staff_space
     compute_staff_positions(graph)
     run_rewrite(graph)
     assign_durations(graph)
+    assign_pitches(graph)
     return result, graph, system_lines
 
 
@@ -129,7 +130,8 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         image, crop_results, staff_lines_per_crop, staff_line=staff_line
     )
     truth = derive_ground_truth(
-        dataset, image_id, bbox_filter=_make_crop_bbox_filter(samples)
+        dataset, image_id, bbox_filter=_make_crop_bbox_filter(samples),
+        staff_lines=staff_rows,
     )
 
     matches = match_pairs(
@@ -143,6 +145,7 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         predicted.graph_edges, truth.graph_edges, matches
     )
     ser = symbol_error_rate(predicted.duration_sequence, truth.duration_sequence)
+    pitch_ser = symbol_error_rate(predicted.pitch_sequence, truth.pitch_sequence)
 
     mask_means = {
         k: {
@@ -166,10 +169,13 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         "edge_recall": edge_r,
         "edge_f1": edge_f1,
         "ser": ser,
+        "pitch_ser": pitch_ser,
         "n_pred": len(predicted.annotations),
         "n_gt": len(truth.annotations),
         "pred_duration_sequence": list(predicted.duration_sequence),
         "gt_duration_sequence": list(truth.duration_sequence),
+        "pred_pitch_sequence": list(predicted.pitch_sequence),
+        "gt_pitch_sequence": list(truth.pitch_sequence),
     }
 
 
@@ -193,6 +199,7 @@ def _aggregate(pages):
         "edge_recall",
         "edge_f1",
         "ser",
+        "pitch_ser",
     )
     means = {k: float(np.mean([p[k] for p in pages])) for k in keys_float}
     mask_kinds = set()
@@ -231,6 +238,7 @@ def _aggregate(pages):
         "edge_recall": means["edge_recall"],
         "edge_f1": means["edge_f1"],
         "ser": means["ser"],
+        "pitch_ser": means["pitch_ser"],
     }
 
 
@@ -240,7 +248,7 @@ def main():
     )
     parser.add_argument("--split", choices=("train", "test"), default="test")
     parser.add_argument("--limit", type=int, default=10)
-    parser.add_argument("--iou-threshold", type=float, default=0.5)
+    parser.add_argument("--iou-threshold", type=float, default=0.3)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--write-json-pages", action="store_true")
     args = parser.parse_args()
@@ -290,6 +298,9 @@ def main():
         f"{summary['edge_recall']:.4f} / {summary['edge_f1']:.4f}   (stage 6, reconstruction)"
     )
     print(f"  SER:              {summary['ser']:.4f}   (end-to-end, duration)")
+    print(
+        f"  pitch SER:        {summary['pitch_ser']:.4f}   (end-to-end, pitch)"
+    )
     print()
     print(f"report written to {summary_path}")
 
