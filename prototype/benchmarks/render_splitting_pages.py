@@ -1,9 +1,9 @@
 import argparse
 from pathlib import Path
 
-from src.deepscores import DeepScoresDataset
-from src.split_visualization import render_page_diagnostics
-from src.splitting import PrimitiveSplitter
+from src.deepscores.dataset import DeepScoresDataset
+from src.symbols.visualization import render_page_diagnostics
+from src.symbols.splitter import PrimitiveSplitter
 
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"

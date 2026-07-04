@@ -2,10 +2,10 @@ import unittest
 
 import numpy as np
 
-from src.assembly import compute_staff_positions, graph_from_split, run_rewrite
-from src.graph import NodeKind
-from src.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
-from src.semantics import (
+from src.reconstruction.assembly import compute_staff_positions, graph_from_split, run_rewrite
+from src.models.graph import NodeKind
+from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
+from src.reconstruction.semantics import (
     EIGHTH,
     HALF,
     QUARTER,

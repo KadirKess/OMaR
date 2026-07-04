@@ -1,6 +1,6 @@
 from enum import StrEnum
 from dataclasses import dataclass, field
-from src.primitives import PrimitiveKind, Primitive
+from src.models.primitives import PrimitiveKind, Primitive
 
 
 class Relation(StrEnum):

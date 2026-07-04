@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 from skimage import color, filters, measure
 
-from .preprocessing import Preprocessor
+from src.preprocessing.preprocessor import Preprocessor
 
 
 TARGET_CATEGORY_NAMES = {

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .primitives import PrimitiveKind, PrimitiveSplit
+from src.models.primitives import PrimitiveKind, PrimitiveSplit
 
 
 @dataclass(frozen=True)

@@ -6,7 +6,7 @@ import math
 import numpy as np
 from skimage import draw, measure, morphology
 
-from .primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
+from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
 
 
 @dataclass(frozen=True)

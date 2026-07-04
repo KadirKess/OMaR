@@ -18,7 +18,7 @@ flags or dots):
 
 from dataclasses import dataclass
 
-from src.graph import NodeKind, NotationGraph
+from src.models.graph import NodeKind, NotationGraph
 
 WHOLE = 1.0
 HALF = 0.5

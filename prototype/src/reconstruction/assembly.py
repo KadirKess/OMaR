@@ -1,5 +1,5 @@
-from src.graph import NodeKind, NotationGraph, Relation
-from src.primitives import PrimitiveSplit
+from src.models.graph import NodeKind, NotationGraph, Relation
+from src.models.primitives import PrimitiveSplit
 
 
 def graph_from_split(split: PrimitiveSplit) -> NotationGraph:

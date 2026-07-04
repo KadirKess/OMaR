@@ -2,14 +2,14 @@ import unittest
 
 import numpy as np
 
-from src.assembly import (
+from src.reconstruction.assembly import (
     build_spatial_edges,
     compute_staff_positions,
     graph_from_split,
     run_rewrite,
 )
-from src.graph import NodeKind, Relation
-from src.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
+from src.models.graph import NodeKind, Relation
+from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
 
 
 def make_primitive(kind, x0, y0, x1, y1, confidence=1.0):

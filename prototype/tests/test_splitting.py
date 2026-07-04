@@ -3,9 +3,9 @@ import unittest
 import numpy as np
 from skimage import draw
 
-from src.primitives import PrimitiveKind, SplitStatus
-from src.split_evaluation import score_mask
-from src.splitting import PrimitiveSplitter
+from src.models.primitives import PrimitiveKind, SplitStatus
+from src.symbols.evaluation import score_mask
+from src.symbols.splitter import PrimitiveSplitter
 
 
 def add_head(image, x, y, rx=7, ry=5):

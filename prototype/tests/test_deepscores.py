@@ -1,9 +1,9 @@
 import unittest
 from pathlib import Path
 
-from src.deepscores import DeepScoresDataset
-from src.primitives import PrimitiveKind
-from src.splitting import PrimitiveSplitter
+from src.deepscores.dataset import DeepScoresDataset
+from src.models.primitives import PrimitiveKind
+from src.symbols.splitter import PrimitiveSplitter
 
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"

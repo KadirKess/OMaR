@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
 
-from .deepscores import CropSample
-from .primitives import PrimitiveKind, PrimitiveSplit
+from src.deepscores.dataset import CropSample
+from src.models.primitives import PrimitiveKind, PrimitiveSplit
 
 
 COLORS = {
