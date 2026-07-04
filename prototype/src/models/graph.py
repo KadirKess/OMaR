@@ -44,7 +44,7 @@ class Edge:
     relation: Relation
 
 
-@dataclass
+@dataclass(eq=False)
 class NotationGraph:
     """A graph of musical notation primitives."""
 
