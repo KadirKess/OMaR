@@ -1,9 +1,6 @@
-"""Encode pipeline output (duration + pitch token sequences) as a MIDI file.
+"""Encode pipeline output as a monophonic MIDI file.
 
-Token format mirrors what `src.deepscores.io.build_predicted_page` writes:
-``duration_sequence`` is a tuple of ``'quarter'``/``'eighth'`` strings,
-``pitch_sequence`` is a tuple of ``'A4'``-style pitch strings (or ``'?'``
-when pitch assignment failed). A ``'?'`` pitch skips that note.
+A '?' pitch in the sequence skips that note.
 """
 
 from __future__ import annotations
@@ -16,7 +13,7 @@ _PITCH_LETTER_OFFSET = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 
 def pitch_token_to_midi(token: str) -> int | None:
-    """``'A4'`` -> 69 (MIDI note number). Returns ``None`` on unknown syntax."""
+    """Convert a token like 'A4' to a MIDI note number, or None if unknown."""
     if not token or token == "?" or len(token) < 2:
         return None
     letter = token[0].upper()
@@ -30,7 +27,7 @@ def pitch_token_to_midi(token: str) -> int | None:
 
 
 def duration_token_to_ticks(token: str, ppq: int = 480) -> int | None:
-    """``'quarter'``/``'eighth'`` -> ticks at the given pulses-per-quarter."""
+    """Ticks for a duration token at the given pulses-per-quarter, or None."""
     if token == "quarter":
         return ppq
     if token == "eighth":

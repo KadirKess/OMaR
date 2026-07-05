@@ -1,0 +1,141 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage[french]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,
+    urlcolor=black,
+    citecolor=black,
+}
+\title{\vspace{-1.5cm}\textbf{Reconnaissance Optique de Musique \\ \large Livrable 4~: Rapport sur les résultats}}
+    
+\author{Sacha Melin \\ Abdulkadir Kessaria}
+\date{}
+\begin{document}
+\maketitle
+
+La stratégie d'évaluation, détaillée dans le Livrable~2, consiste à mesurer \emph{séparément} chaque étape de la pipeline avec sa métrique native (F-mesure DIBCO $\rightarrow$ F1 pixel de portée $\rightarrow$ mAP de détection $\rightarrow$ matrice de confusion / F1 de classification $\rightarrow$ F1 sur les arêtes), puis à ajouter un score de bout en bout (SER). Nous ne rappelons ici que les valeurs obtenues~; les définitions des métriques et des seuils acceptables figurent dans le livrable précédent.
+
+\paragraph{Base d'évaluation.}
+Les mesures portent sur un sous-ensemble du jeu DeepScoresV2~\cite{tuggener2020deepscores}, version \emph{dense} (annotations au niveau instance et segmentation, $\sim$\,1\,Go en local). L'évaluation \emph{par étapes} utilise la partition \texttt{test} sur 10~pages, le périmètre étant restreint aux quatre catégories prises en charge par la pipeline~: \texttt{noteheadBlackOnLine}, \texttt{noteheadBlackInSpace}, \texttt{stem}, \texttt{beam}. Les autres classes (clés, altérations, silences, têtes ouvertes, crochets, notes d'ornement) sont exclues des prédictions \emph{et} de la vérité terrain filtrée, ce qui évite d'annuler artificiellement le rappel sur les pages longues. Le seuil IoU d'appariement des boîtes est fixé à $0{,}3$ par défaut (cf.~limites plus bas).
+
+\paragraph{Prétraitement (étape~1).}
+Le benchmark de binarisation (paires d'images dégradées / vérité terrain binaire) obtient une F-mesure pixel moyenne de $\mathbf{0{,}8120}$, un PSNR moyen de $\mathbf{14{,}47}$~dB et une DRD moyenne de $\mathbf{9{,}05}$. Le benchmark de redressement (images à rotation synthétique d'angle connu) atteint une erreur angulaire moyenne de $\mathbf{0{,}28°}$, sous le seuil de tolérance de $0{,}5°$. Sur le sous-ensemble DeepScoresV2, les images sont typographiées et déjà droites~; le redressement n'y est donc pas appliqué, mais la binarisation Sauvola reste active.
+
+\paragraph{Séparation des primitives (étape~5, masque).}
+Le tableau~\ref{tab:mask} présente les P/R/F1/IoU par type de primitive, calculés au pixel sur les masques booléens et agrégés sur les 10~pages test.
+
+\begin{center}
+\refstepcounter{table}\label{tab:mask}%
+\renewcommand{\arraystretch}{0.95}
+\setlength{\tabcolsep}{4pt}
+\small
+\begin{tabular}{@{}l r r r r@{}}
+\hline
+\textbf{Primitive} & \textbf{Précision} & \textbf{Rappel} & \textbf{F1} & \textbf{IoU} \\
+\hline
+notehead & 0{,}9210 & 0{,}9489 & 0{,}9339 & 0{,}9038 \\
+stem     & 0{,}7532 & 0{,}7853 & 0{,}7584 & 0{,}6705 \\
+beam     & 0{,}9098 & 0{,}8959 & 0{,}8936 & 0{,}8429 \\
+unknown  & 0{,}5117 & 0{,}4335 & 0{,}4371 & 0{,}3487 \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: évaluation pixel des masques par primitive sur 10~pages test.
+\end{center}
+
+\paragraph{Détection et classification (étape~5, objet).}
+Le tableau~\ref{tab:detect} donne la précision moyenne (mAP) et l'exactitude de classification sur les 1969~paires appariées au seuil IoU $0{,}3$ sur 10~pages test. L'exactitude atteint $0{,}93$~; la grande majorité des erreurs est une confusion \texttt{noteheadBlackOnLine} $\to$ \texttt{noteheadBlackInSpace} (170 cas), due à la position verticale de la tête à proximité immédiate d'une ligne de portée, où le seuil entre « sur la ligne » et « entre les lignes » devient sensible au bruit de binarisation. Les autres classes (hampes, ligatures, \texttt{InSpace}) restent correctement étiquetées, la matrice de confusion est quasi diagonale (tableau~\ref{tab:cm}).
+
+\begin{center}
+\refstepcounter{table}\label{tab:detect}%
+\renewcommand{\arraystretch}{0.95}
+\setlength{\tabcolsep}{4pt}
+\small
+\begin{tabular}{@{}l r@{}}
+\hline
+\textbf{Métrique} & \textbf{Valeur} \\
+\hline
+mAP @IoU$=0{,}3$                      & 0{,}6445 \\
+\quad AP \texttt{noteheadBlackOnLine}  & 0{,}7891 \\
+\quad AP \texttt{noteheadBlackInSpace} & 0{,}8372 \\
+\quad AP \texttt{stem}                 & 0{,}2243 \\
+\quad AP \texttt{beam}                & 0{,}7274 \\
+\hline
+Exactitude (classification)            & 0{,}9309 \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: mAP et exactitude de classification sur 10~pages test.
+\end{center}
+
+\begin{center}
+\refstepcounter{table}\label{tab:cm}%
+\renewcommand{\arraystretch}{0.95}
+\setlength{\tabcolsep}{6pt}
+\small
+\begin{tabular}{@{}l|cccc@{}}
+\hline
+\textbf{Vérité $\downarrow$ / Prédiction $\rightarrow$} & \texttt{OnLine} & \texttt{InSpace} & \texttt{stem} & \texttt{beam} \\
+\hline
+\texttt{noteheadBlackOnLine}  & \textbf{504} & 170 & 0 & 1 \\
+\texttt{noteheadBlackInSpace} & 0 & \textbf{660} & 0 & 3 \\
+\texttt{stem}                 & 0 & 0 & \textbf{363} & 0 \\
+\texttt{beam}                 & 0 & 0 & 0 & \textbf{268} \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: matrice de confusion (somme sur 10~pages, 1969~paires). Lignes = vérité terrain, colonnes = prédiction.
+\end{center}
+
+\paragraph{Reconstruction (étape~6, arêtes).}
+Les arêtes du graphe (\texttt{HEAD\_TO\_STEM}, \texttt{STEM\_TO\_BEAM}) sont comparées à la vérité terrain~: précision $0{,}4026$, rappel $0{,}3978$, F1 $0{,}4001$. Les erreurs proviennent essentiellement de paires non appariées en amont~: toute arête touchant une primitive non appariée est comptée comme faux positif, et toute arête manquante comme faux négatif.
+
+\paragraph{Bout en bout (SER).}
+La séquence de durées (jetons \texttt{quarter}/\texttt{eighth}) obtient un \emph{Symbol Error Rate}~\cite{calvozaragoza2018primus} de $\mathbf{0{,}1105}$, soit environ une erreur pour 10~symboles~: la structure (noire vs.\ croche) est globalement respectée, mais pâtit des erreurs d'appariement en amont. Le SER sur les hauteurs vaut $\mathbf{0{,}3783}$, soit près d'une erreur sur trois~; c'est le goulot d'étranglement de la pipeline. Il s'explique par la fragilité du calcul de hauteur~: position verticale de la tête convertie en degré diatonique, clé supposée \emph{sol} par défaut, ni armure ni altération. Une erreur d'une demi-interligne (un seul degré diatonique) suffit à produire un jeton de hauteur erroné.
+
+\paragraph{Limites et artefact des classes fines.}\label{sec:thin}
+La principale limite de l'évaluation par objet est l'\emph{artefact des classes fines}~: DeepScores annote les hampes avec des boîtes de largeur 1~pixel, de sorte qu'une hampe correctement prédite mais un peu trop large ne passe pas le seuil IoU usuel. Entre les seuils $0{,}3$ et $0{,}5$, le mAP chute de $0{,}64$ à $0{,}59$ et le F1 des arêtes de $0{,}40$ à $0{,}12$. L'AP des hampes s'effondre ($0{,}22 \to 0{,}03$) tandis que les classes larges (têtes de notes, ligatures) restent stables (AP $\geq 0{,}70$).
+
+Le seuil $0{,}3$ retenu par défaut reflète donc mieux la qualité réelle de la détection sur les classes fines~; nous indiquons $0{,}5$ à titre de référence stricte.
+
+Le prototype présente d'autres limites~:
+\begin{itemize}
+    \item portée restreinte aux noires et croches~;
+    \item clé codée en dur (sol)~;
+    \item sortie MIDI monophonique, sans silence~;
+\end{itemize}
+
+\paragraph{Tests unitaires.}
+La suite de tests comporte \textbf{89 tests, tous réussis}. Le tableau~\ref{tab:tests} détaille les modules.
+
+\begin{center}
+\refstepcounter{table}\label{tab:tests}%
+\renewcommand{\arraystretch}{0.95}
+\setlength{\tabcolsep}{4pt}
+\small
+\begin{tabular}{@{}l p{7.4cm} r l@{}}
+\hline
+\textbf{Module} & \textbf{Périmètre} & \textbf{Tests} & \textbf{Statut} \\
+\hline
+\texttt{test\_splitting}        & séparation morphologique (têtes/hampes/ligatures), statuts  & 6  & OK \\
+\texttt{test\_assembly}          & règles de réécriture du graphe (note, accord, groupe lié)  & 18 & OK \\
+\texttt{test\_semantics}         & durées (noire/croche/...), hauteurs, validation de mesure    & 9  & OK \\
+\texttt{test\_deepscores\_io}    & annotations, arêtes, séquences durée/hauteur, vérité terrain& 15 & OK \\
+\texttt{test\_deepscores}        & test de démarrage du chargeur de jeu de données                & 2  & OK \\
+\texttt{test\_pipeline\_metrics} & IoU, mAP, matrice de confusion, P/R/F1 sur les arêtes, SER   & 28 & OK \\
+\texttt{test\_midi}              & conversion jetons $\to$ MIDI (PPQ, hauteurs, durées)       & 11 & OK \\
+\hline
+\textbf{Total}                   &                                                              & \textbf{89} & \textbf{OK} \\
+\hline
+\end{tabular}\\[3pt]
+Tableau~\thetable~: suite de tests par module (tous réussis).
+\end{center}
+
+\newpage
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

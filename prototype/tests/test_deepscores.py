@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from src.deepscores.dataset import DeepScoresDataset
-from src.models.primitives import PrimitiveKind
+from src.models.primitives import PrimitiveKind, SplitStatus
 from src.symbols.splitter import PrimitiveSplitter
 
 
@@ -37,7 +37,7 @@ class DeepScoresSmokeTests(unittest.TestCase):
             sample.staff_line,
             sample.original_mask,
         )
-        self.assertNotEqual(str(result.status), "accepted")
+        self.assertNotEqual(result.status, SplitStatus.ACCEPTED)
         self.assertGreater(len(result.of_kind(PrimitiveKind.UNKNOWN)), 0)
 
 

@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,32 +41,34 @@ class DurationTokenTests(unittest.TestCase):
 
 class WriteMidiTests(unittest.TestCase):
     def test_writes_valid_smf_header(self):
-        out = Path("/tmp/test_opencode_midi.mid")
-        written = write_midi(
-            ("quarter", "eighth", "quarter", "eighth"),
-            ("C4", "D4", "E4", "G4"),
-            out,
-        )
-        self.assertEqual(written, 4)
-        data = out.read_bytes()
-        self.assertTrue(data.startswith(b"MThd"))
-        self.assertEqual(data[9], 0)
-        track_chunk = data[14:]
-        self.assertTrue(track_chunk.startswith(b"MTrk"))
-        self.assertEqual(
-            int.from_bytes(track_chunk[4:8], "big"),
-            len(track_chunk[8:]),
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "midi.mid"
+            written = write_midi(
+                ("quarter", "eighth", "quarter", "eighth"),
+                ("C4", "D4", "E4", "G4"),
+                out,
+            )
+            self.assertEqual(written, 4)
+            data = out.read_bytes()
+            self.assertTrue(data.startswith(b"MThd"))
+            self.assertEqual(data[9], 0)
+            track_chunk = data[14:]
+            self.assertTrue(track_chunk.startswith(b"MTrk"))
+            self.assertEqual(
+                int.from_bytes(track_chunk[4:8], "big"),
+                len(track_chunk[8:]),
+            )
 
     def test_skips_unknown_pitch(self):
-        out = Path("/tmp/test_opencode_midi_skip.mid")
-        written = write_midi(
-            ("quarter", "eighth", "quarter"),
-            ("C4", "?", "E4"),
-            out,
-        )
-        self.assertEqual(written, 2)
-        self.assertTrue(out.read_bytes().startswith(b"MThd"))
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "midi.mid"
+            written = write_midi(
+                ("quarter", "eighth", "quarter"),
+                ("C4", "?", "E4"),
+                out,
+            )
+            self.assertEqual(written, 2)
+            self.assertTrue(out.read_bytes().startswith(b"MThd"))
 
 
 if __name__ == "__main__":

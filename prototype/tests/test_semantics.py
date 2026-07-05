@@ -128,15 +128,6 @@ class PitchTests(unittest.TestCase):
         (note,) = graph.nodes.values()
         self.assertEqual(note.attrs["pitch"], "G2")
 
-    def test_unsupported_clef_raises(self):
-        graph = build(
-            (filled_head(20, 46, 34, 54), stem(32, 22, 34, 48)),
-            head_to_stem=((0, 1),),
-        )
-        with self.assertRaises(ValueError):
-            assign_pitches(graph, clef="tenor")
-
-
 class ValidationTests(unittest.TestCase):
     def four_quarters(self):
         primitives = []

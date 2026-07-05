@@ -251,6 +251,7 @@ def main():
     parser.add_argument("--iou-threshold", type=float, default=0.3)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--write-json-pages", action="store_true")
+    parser.add_argument("--seed", type=int, default=None, help="shuffle image order for reproducible random page selection")
     args = parser.parse_args()
 
     dataset = DeepScoresDataset(DATA_DIR, split=args.split)
@@ -258,7 +259,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     grouped: dict[str, list] = defaultdict(list)
-    for sample in dataset.iter_supported_crops():
+    for sample in dataset.iter_supported_crops(shuffle_seed=args.seed):
         grouped[sample.image_id].append(sample)
         if len(grouped) >= args.limit:
             break
@@ -281,6 +282,7 @@ def main():
 
     summary = _aggregate(pages)
     summary["classes"] = list(CLASSES)
+    summary["iou_threshold"] = float(args.iou_threshold)
     summary_path = args.output / "report.json"
     with summary_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
@@ -291,7 +293,7 @@ def main():
         f"  mask notehead F1: {summary['mask_prf1'].get('notehead', {}).get('f1', 0.0):.4f}   "
         f"(stage 5, splitting)"
     )
-    print(f"  mAP @IoU=0.5:     {summary['mAP']:.4f}   (stage 5, detection)")
+    print(f"  mAP @IoU={args.iou_threshold:g}: {summary['mAP']:.4f}   (stage 5, detection)")
     print(f"  accuracy:         {summary['accuracy']:.4f}   (stage 5, classification)")
     print(
         f"  edge P/R/F1:      {summary['edge_precision']:.4f} / "
