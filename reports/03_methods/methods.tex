@@ -1,0 +1,67 @@
+\documentclass[a4paper,10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage[french]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,
+    urlcolor=black,
+    citecolor=black,
+}
+
+\title{\vspace{-1.5cm}\textbf{Reconnaissance Optique de Musique \\ \large Livrable 3~: Prototype et méthodes}}
+
+\author{Sacha Melin \\ Abdulkadir Kessaria}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+Ce livrable présente le prototype développé et les méthodes retenues pour chaque étape du processus de reconnaissance optique de musique (OMR), selon le découpage en quatre phases rappelé par Rebelo et al.~\cite{Rebelo2012-jn}~: prétraitement de l'image, reconnaissance des symboles, reconstruction de l'information musicale, et encodage de la notation. Le périmètre est volontairement restreint aux \emph{noires et croches}~: têtes de notes pleines, hampes et ligatures. Clés, altérations, armures, silences, crochets, têtes ouvertes (blanches, rondes) et notes d'ornement sont exclus des prédictions comme de la vérité terrain. Cette restriction, justifiée plus loin en \nameref{sec:classif}, découle des difficultés rencontrées sur un périmètre initialement plus large.
+
+\paragraph{Prétraitement de l'image.}
+La binarisation utilise le seuillage adaptatif local de Sauvola~\cite{sauvola2000adaptive} (fenêtre $31\times31$, $k=0{,}12$), la convention étant encre $=0$ / fond $=255$. Cette étape est parmi les plus faciles à évaluer car la vérité terrain se génère gratuitement sur données typographiées~; les métriques natives sont la F-mesure pixel, le PSNR et la DRD (Distance Reciprocal Distortion) au sens DIBCO~\cite{dibco2011,lu2004drd}.
+
+Le redressement repose sur l'estimation de l'angle d'inclinaison par transformée de Hough~\cite{BALLARD1981111} sur les arêtes de Canny~; notons que sur le sous-ensemble DeepScoresV2 les images sont déjà redressées, l'estimation n'est donc pas appliquée dans la pipeline mais reste évaluée séparément par le benchmark dédié (erreur angulaire résiduelle).
+
+Pour la détection des portées, nous avons d'abord prototypé et intégré une approche par plus court chemin, à la suite de Rebelo et al.~\cite{4402863}~: on construit un graphe de pixels (8-connexité) puis on calcule, pour chaque ligne, le plus court chemin de gauche à droite via l'algorithme de Dijkstra~\cite{dijkstra1959} en pénalisant les pixels d'encre. La méthode est invariante aux portées non rectilignes mais s'est révélée lourde (graphe dense sur l'image entière) et peu efficace en pratique sur nos images~; nous l'avons remplacée par la méthode usuelle de profil de projection horizontale~\cite{Blostein1992}, qui recherche les maxima du nombre de pixels d'encre par ligne après binarisation.
+
+Pour la suppression des lignes de portée, on parcourt ensuite les segments verticaux par colonne et l'on n'efface que les segments d'épaisseur inférieure à $2\times$ la hauteur de ligne, de sorte que les hampes traversant les lignes soient conservées~; les barres de mesure, quant à elles, sont retirées par un critère d'\emph{envergure} (segments verticaux traversant tout le système de portée), les hampes n'atteignant jamais les deux extrémités.
+
+\paragraph{Isolation des symboles.}
+Une fois les portées supprimées, chaque composante connexe est décomposée en primitives par ouverture morphologique avec des éléments structurants adaptés~\cite{NG199639}, dans l'ordre~:
+\begin{itemize}
+    \item détection des \emph{ligatures} par ouverture avec un segment pivoté~;
+    \item détection des \emph{hampes} par ouverture verticale avec une sonde étroite (choisie pour préserver les hampes fines des polices DeepScores), après soustraction de la ligature~;
+    \item détection des \emph{têtes pleines} par balayage d'un gabarit elliptique autour des extrémités de chaque hampe.
+\end{itemize}
+L'encre résiduelle devient une primitive \texttt{unknown}. Le statut d'une composante est \texttt{REJECTED} si la topologie est invalide (ce critère prime sur tout autre), \texttt{UNCERTAIN} si la topologie est valide mais qu'il reste de l'encre inexpliquée, \texttt{ACCEPTED} sinon (une tête par hampe, une ligature reliée à $\geq2$ hampes).
+
+\paragraph{Classification.}\label{sec:classif}
+L'état de l'art~\cite{rebelo2010,Rebelo2012-jn} recommande, pour la classification des symboles isolés, des descripteurs de forme (HOG~\cite{dalal2005hog}, profils de projection) couplés à un classifieur statistique de type SVM ou k-NN, les SVM surpassant souvent les HMM sur cette tâche~\cite{rebelo2010}. Une première étude a exploré cette voie sur un périmètre large (clés, altérations, bémols, têtes ouvertes, etc.). Cette voie s'est heurtée à deux obstacles~: (1)~la \emph{fragmentation} des composantes connexes, c'est-à-dire que la suppression des lignes de portée fend les têtes ouvertes (blanches, rondes) en deux arcs et que les bémols ne sont pas séparables de manière fiable~; (2)~l'instabilité des descripteurs sur ces fragments. Faute de reconstruction fiable des composantes, nous avons fait marche arrière et réduit le périmètre aux noires et croches (têtes pleines), pour lesquelles la classification se ramène à un problème \emph{géométrique} n'exigeant pas de classifieur entraîné.
+
+La classification porte donc sur quatre catégories au sens de DeepScores~: \texttt{noteheadBlackOnLine}, \texttt{noteheadBlackInSpace}, \texttt{stem}, \texttt{beam}. La distinction \emph{OnLine}/\emph{InSpace} est déterminée par la position verticale du centre de la tête par rapport aux lignes de portée détectées~; les hampes et ligatures héritent de leur étiquette selon le type de primitive morphologique. La \emph{durée} est dérivée structurellement~: tête pleine et hampe sans ligature $\to$ noire, têtes pleines jointes par une ligature $\to$ croches.
+
+La \emph{hauteur} est calculée à partir de la position verticale de la tête, exprimée en demi-interlignes au-dessus de la ligne inférieure de la portée, puis convertie en degré diatonique. La clé est supposée \emph{sol}, une hypothèse acceptable grâce à la sélection de pages mono-clé dans le benchmark.
+
+\paragraph{Reconstruction de l'information musicale.}
+L'OMR étant un problème bidimensionnel~\cite{shatri2020opticalmusicrecognitionstate}, il faut retrouver la séquence des symboles \emph{et} leurs relations spatiales. Nous modélisons la partition comme un \emph{graphe de notation} et appliquons une approche par règles de réécriture, comme décrit par Fahmy et Blostein~\cite{fahmy1993graphgrammar,fahmy1998graphrewriting,blostein1997lncs} et dans la lignée des grammaires EPF de Coüasnon~\cite{couasnon1995,couasnon2006dmos} et du moteur de construction de Bainbridge et Bell~\cite{bainbridge2003}. Trois règles de réécriture sont appliquées jusqu'à point fixe~: (1)~une hampe portant exactement une tête $\to$ \texttt{NOTE}~; (2)~des notes partageant une même ligature $\to$ \texttt{BEAMED\_GROUP}. Les accords (plusieurs têtes sur une hampe) ne sont pas intégrés à ce stade. Les relations \texttt{HEAD\_TO\_STEM} et \texttt{STEM\_TO\_BEAM} issues du découpage sont traduites en arêtes du graphe~; les relations spatiales \texttt{ABOVE} et \texttt{ALIGNED\_VERTICAL} sont ajoutées par parcours des paires de n{\oe}uds. Cette approche par règles relève plus du \emph{discrete relaxation}~\cite{fahmy1998graphrewriting} que d'une grammaire formelle stricte~: la sémantique musicale naît de motifs locaux réécrits itérativement, comme dans les approches par fusion de règles~\cite{rossant2007robust}.
+
+\paragraph{Encodage de la notation.}
+La séquence de durées (jetons \texttt{quarter}/\texttt{eighth}) et la séquence de hauteurs (jetons diatoniques de type \texttt{A4}) sont émises dans l'ordre de lecture (tri par abscisse). La sortie MIDI est monophonique~: chaque note est déclenchée puis relâchée une fois sa durée écoulée, sans chevauchement ni silence explicite. Cette étape reste limitée à la restitution sonore (hauteur, durée)~; les formats expressifs MusicXML~\cite{good2001} et MEI~\cite{roland2002} ne sont pas pris en charge par le prototype, conformément à la hiérarchie de difficultés décrite par Calvo-Zaragoza et al.~\cite{calvozaragoza2020understanding}.
+
+\newpage
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
