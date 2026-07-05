@@ -4,7 +4,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import re
 from typing import Iterator
 
 import numpy as np
@@ -52,15 +51,6 @@ def _bbox_distance(a, b) -> float:
     return float(np.hypot(dx, dy))
 
 
-def _intersects(a, b, margin=0) -> bool:
-    return not (
-        a[2] + margin < b[0]
-        or b[2] + margin < a[0]
-        or a[3] + margin < b[1]
-        or b[3] + margin < a[1]
-    )
-
-
 class DeepScoresDataset:
     """Read the dense DeepScores annotations already shipped with the project."""
 
@@ -83,12 +73,6 @@ class DeepScoresDataset:
             self._by_image[str(annotation["img_id"])].append(
                 (str(annotation_id), annotation)
             )
-
-    @staticmethod
-    def score_group(filename: str) -> str:
-        """Stable group used to keep font variants out of validation leakage."""
-        match = re.match(r"(lg-[^-]+)", filename)
-        return match.group(1) if match else filename
 
     def _semantic_mask(self, image):
         path = (
@@ -127,7 +111,6 @@ class DeepScoresDataset:
         return ink, staffless, image
 
     def page_compounds(self, image_id: str) -> list[CropSample]:
-        """Extract every nontrivial connected component from a staffless page."""
         image_id = str(image_id)
         if not any(
             self.categories[ann["cat_id"][0]]["name"]
@@ -182,13 +165,21 @@ class DeepScoresDataset:
             )
         return samples
 
-    def iter_supported_crops(self, limit: int | None = None) -> Iterator[CropSample]:
-        """Yield isolated filled-head/stem/one-beam compounds."""
+    def iter_supported_crops(
+        self, limit: int | None = None, shuffle_seed: int | None = None
+    ) -> Iterator[CropSample]:
+        import random as _random
+
         yielded = 0
         target_ids = {self.category_ids[name] for name in TARGET_CATEGORY_NAMES}
         staff_id = self.category_ids.get("staff")
 
-        for image_id, image in self.images.items():
+        image_ids = list(self.images.keys())
+        if shuffle_seed is not None:
+            _random.Random(shuffle_seed).shuffle(image_ids)
+
+        for image_id in image_ids:
+            image = self.images[image_id]
             entries = self._by_image[image_id]
             targets = [
                 (aid, ann) for aid, ann in entries if ann["cat_id"][0] in target_ids
@@ -243,11 +234,6 @@ class DeepScoresDataset:
                     kinds.count("stem"),
                     kinds.count("beam"),
                 )
-                valid = (head_count == stem_count == 1 and beam_count == 0) or (
-                    head_count == stem_count and head_count >= 2 and beam_count == 1
-                )
-                if not valid:
-                    continue
 
                 component_heads = [
                     ann
@@ -293,12 +279,6 @@ class DeepScoresDataset:
                 if len(touched) == 0:
                     continue
                 compound = np.isin(labels, touched)
-                # Keep unrelated symbols out of the controlled splitting benchmark.
-                unexplained_ratio = np.count_nonzero(compound & ~union) / max(
-                    1, np.count_nonzero(compound)
-                )
-                if unexplained_ratio > 0.03:
-                    continue
 
                 ys, xs = np.nonzero(union)
                 margin = int(round(1.5 * staff_space))
@@ -325,7 +305,6 @@ class DeepScoresDataset:
                     return
 
     def iter_unknown_crops(self, limit: int | None = None) -> Iterator[CropSample]:
-        """Yield crops centered on explicitly unsupported symbol classes."""
         yielded = 0
         staff_id = self.category_ids.get("staff")
         target_names = set(TARGET_CATEGORY_NAMES)

@@ -1,19 +1,7 @@
-"""Semantic interpretation passes over the notation graph (guide steps 6-8).
+"""Duration, pitch and measure-consistency passes over the notation graph.
 
-These run *after* the syntactic reconstruction in ``assembly`` and assign
-musical meaning: duration, pitch, then a measure-level consistency check.
-
-Scope / assumptions (forced by the current primitive set, which only contains
-noteheads, stems and beams -- no clefs, barlines, key signatures, accidentals,
-flags or dots):
-
-- Duration is derived from notehead fill + stem + beam membership only. Flags
-  and augmentation dots cannot be detected, so only whole/half/quarter/eighth
-  are produced.
-- Pitch assumes a single clef (treble by default), no key signature and no
-  accidentals -- the milestone-1 scope.
-- Validation has no barlines to cut measures, so the whole staff is treated as
-  a single measure and checked against a supplied time signature.
+Runs after ``assembly``. Scope is noteheads/stems/beams only: no clefs, key
+signatures or accidentals, treble clef assumed.
 """
 
 from dataclasses import dataclass
@@ -80,7 +68,7 @@ def assign_durations(graph: NotationGraph) -> None:
 
 
 def _step_to_pitch(step: int, base_letter: str, base_octave: int) -> str:
-    """Diatonic ``step`` above the clef's bottom line -> e.g. ``'G4'``."""
+    """Map a diatonic step above the clef's bottom line to a pitch like 'G4'."""
     total = _LETTERS.index(base_letter) + step
     letter = _LETTERS[total % 7]
     octave = base_octave + total // 7
@@ -93,8 +81,6 @@ def assign_pitches(graph: NotationGraph, clef: str = "treble") -> None:
     Assumes no key signature and no accidentals. Chords get ``attrs['pitches']``
     (a list, low to high) instead.
     """
-    if clef not in _CLEF_BOTTOM_LINE:
-        raise ValueError(f"unsupported clef: {clef!r}")
     base_letter, base_octave = _CLEF_BOTTOM_LINE[clef]
 
     for node, _ in _iter_note_like(graph):
