@@ -1,0 +1,9 @@
+# CMake build tree
+/build/
+build/
+
+# compile_commands.json symlink
+compile_commands.json
+
+# pipeline output
+/output/
