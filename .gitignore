@@ -20,6 +20,13 @@ __pycache__/
 # Virtual environment
 **/.venv/
 
+# C++ build artifacts
+/cpp/build/
+/cpp/_deps/
+/cpp/.cache/
+/cpp/compile_commands.json
+/cpp/output/
+
 # Log files
 *.log
 
@@ -34,5 +41,5 @@ __pycache__/
 *.bbl
 
 # Temporary files
-
+docs/
 AGENTS.md
