@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(omr_cpp LANGUAGES CXX)
 
-# ---- Standard ---------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -12,35 +11,46 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-Wall -Wextra)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  add_compile_options(-Wall -Wextra -Wpedantic -Wno-sign-compare)
+endif()
 
-# ---- Dependencies (brew: opencv nlohmann-json googletest) -------------------
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 find_package(nlohmann_json REQUIRED)
 
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 
-# ---- Core library -----------------------------------------------------------
-# Every module under src/ compiles into one static library that the CLI and the
-# tests link against. CONFIGURE_DEPENDS re-globs on rebuild, so adding a new
-# .cpp does not require re-running cmake by hand.
-file(GLOB_RECURSE OMR_CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE OMR_CORE_SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
 
 add_library(omr_core STATIC ${OMR_CORE_SOURCES})
-target_include_directories(omr_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(omr_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
-target_include_directories(omr_core PUBLIC ${OpenCV_INCLUDE_DIRS})
+target_include_directories(omr_core PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(omr_core PUBLIC
+  ${OpenCV_LIBS}
+  nlohmann_json::nlohmann_json
+)
 
-# ---- CLI executable ---------------------------------------------------------
-# Wired once the pipeline entry point exists (plan task K5).
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/pipeline_eval.cpp")
   add_executable(omr_pipeline_eval apps/pipeline_eval.cpp)
   target_link_libraries(omr_pipeline_eval PRIVATE omr_core)
 endif()
 
-# ---- Tests ------------------------------------------------------------------
 option(OMR_BUILD_TESTS "Build the GoogleTest suite" ON)
 if(OMR_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+    GIT_SHALLOW TRUE
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+
   enable_testing()
   add_subdirectory(tests)
 endif()
