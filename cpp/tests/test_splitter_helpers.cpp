@@ -11,6 +11,24 @@ int ink(const cv::Mat& m)
 	return cv::countNonZero(m);
 }
 
+void add_head(omr::Mask& image, int x, int y, int rx = 7, int ry = 5)
+{
+	omr::Mask head = omr::ellipse_mask(image.size(), x, y, rx, ry);
+	image = image | head;
+}
+
+void fill_rect(omr::Mask& image, int y0, int y1, int x0, int x1)
+{
+	for (int y = y0; y < y1; ++y)
+		for (int x = x0; x < x1; ++x)
+			image.set(y, x, 255);
+}
+
+int count_kind(const omr::PrimitiveSplit& split, omr::PrimitiveKind kind)
+{
+	return static_cast<int>(split.of_kind(kind).size());
+}
+
 } // namespace
 
 TEST(LineFootprint, HorizontalLineHasFormulaDimensionsAndMiddleRowOnly)
@@ -163,4 +181,82 @@ TEST(PrimitiveSplitter, CustomConfigPassedThrough)
 	omr::PrimitiveSplitter s(c);
 	EXPECT_DOUBLE_EQ(s.config().beam_threshold, 0.9);
 	EXPECT_DOUBLE_EQ(s.config().head_threshold, 0.4);
+}
+
+TEST(PrimitiveSplitter, UpstemQuarterNote)
+{
+	omr::Mask image(60, 50);
+	add_head(image, 20, 40);
+	fill_rect(image, 12, 41, 26, 28);
+
+	const omr::PrimitiveSplitter splitter;
+	const omr::PrimitiveSplit result = splitter.split(image, 10.0f, 2.0f);
+
+	EXPECT_EQ(result.status, omr::SplitStatus::ACCEPTED);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::NOTEHEAD), 1);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::STEM), 1);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::BEAM), 0);
+	ASSERT_EQ(result.head_to_stem.size(), 1);
+	EXPECT_EQ(result.head_to_stem[0], std::make_pair(1, 0));
+}
+
+TEST(PrimitiveSplitter, SingleBeamGroup)
+{
+	omr::Mask image(70, 90);
+	for (const auto& [x, y] :
+		 std::vector<std::pair<int, int>>{ { 20, 45 }, { 45, 48 }, { 70, 42 } })
+	{
+		add_head(image, x, y);
+		fill_rect(image, 12, y + 1, x + 6, x + 8);
+	}
+	fill_rect(image, 10, 15, 26, 78);
+
+	const omr::PrimitiveSplitter splitter;
+	const omr::PrimitiveSplit result = splitter.split(image, 10.0f, 2.0f);
+
+	EXPECT_EQ(result.status, omr::SplitStatus::ACCEPTED);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::NOTEHEAD), 3);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::STEM), 3);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::BEAM), 1);
+	EXPECT_EQ(result.head_to_stem.size(), 3);
+	EXPECT_EQ(result.stem_to_beam.size(), 3);
+}
+
+TEST(PrimitiveSplitter, UnexplainedRegionMakesResultUncertain)
+{
+	omr::Mask image(70, 70);
+	add_head(image, 20, 45);
+	fill_rect(image, 15, 46, 26, 28);
+	fill_rect(image, 8, 20, 50, 62);
+
+	const omr::PrimitiveSplitter splitter;
+	const omr::PrimitiveSplit result = splitter.split(image, 10.0f, 2.0f);
+
+	EXPECT_EQ(result.status, omr::SplitStatus::UNCERTAIN);
+	EXPECT_EQ(count_kind(result, omr::PrimitiveKind::UNKNOWN), 1);
+	EXPECT_NE(std::find(result.reasons.begin(), result.reasons.end(),
+						"unexplained_ink"),
+			  result.reasons.end());
+}
+
+TEST(PrimitiveSplitter, OpenHeadIsNotAcceptedAsSupported)
+{
+	omr::Mask image(60, 50);
+	cv::ellipse(image.mat(), cv::Point(20, 40), cv::Size(7, 5), 0.0, 0.0,
+				360.0, cv::Scalar(255), 1);
+	fill_rect(image, 12, 41, 26, 28);
+
+	const omr::PrimitiveSplitter splitter;
+	const omr::PrimitiveSplit result = splitter.split(image, 10.0f, 2.0f);
+
+	EXPECT_NE(result.status, omr::SplitStatus::ACCEPTED);
+}
+
+TEST(PrimitiveSplitter, InvalidDimensions)
+{
+	const omr::PrimitiveSplitter splitter;
+	const omr::Mask image(3, 3);
+
+	EXPECT_THROW(splitter.split(image, 0.0f, 1.0f), std::invalid_argument);
+	EXPECT_THROW(splitter.split(image, 1.0f, 0.0f), std::invalid_argument);
 }
