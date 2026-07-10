@@ -15,7 +15,11 @@ from src.deepscores.io import (
     derive_ground_truth,
     write_predictions_json,
 )
-from src.reconstruction.assembly import compute_staff_positions, graph_from_split, run_rewrite
+from src.reconstruction.assembly import (
+    compute_staff_positions,
+    graph_from_split,
+    run_rewrite,
+)
 from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
 from src.reconstruction.semantics import assign_durations, assign_pitches
 
@@ -27,8 +31,12 @@ def make_primitive(kind, x0, y0, x1, y1, confidence=1.0):
 
 
 def quarter_note_split(origin_offset=0):
-    head = make_primitive(PrimitiveKind.NOTEHEAD, 10 + origin_offset, 46, 24 + origin_offset, 54)
-    stem = make_primitive(PrimitiveKind.STEM, 22 + origin_offset, 20, 24 + origin_offset, 46)
+    head = make_primitive(
+        PrimitiveKind.NOTEHEAD, 10 + origin_offset, 46, 24 + origin_offset, 54
+    )
+    stem = make_primitive(
+        PrimitiveKind.STEM, 22 + origin_offset, 20, 24 + origin_offset, 46
+    )
     return PrimitiveSplit(
         primitives=(head, stem),
         head_to_stem=((0, 1),),
@@ -71,7 +79,9 @@ class NoteheadCatNameTests(unittest.TestCase):
 
     def test_defaults_to_on_line_without_staff_lines(self):
         bbox = (0, 41, 14, 49)
-        self.assertEqual(_notehead_cat_name(bbox, (), staff_line=2.0), "noteheadBlackOnLine")
+        self.assertEqual(
+            _notehead_cat_name(bbox, (), staff_line=2.0), "noteheadBlackOnLine"
+        )
 
 
 class PitchSequenceTests(unittest.TestCase):
@@ -132,7 +142,9 @@ class BuildPredictedPageTests(unittest.TestCase):
             staff_line=2.0,
         )
         # head at x0=10 y0=46..y1=54 -> with origin (100,200): 110..114..124
-        head_ann = next(a for a in page.annotations if a.cat_name.startswith("notehead"))
+        head_ann = next(
+            a for a in page.annotations if a.cat_name.startswith("notehead")
+        )
         self.assertAlmostEqual(head_ann.bbox[0], 110.0)
         self.assertAlmostEqual(head_ann.bbox[1], 246.0)
         self.assertAlmostEqual(head_ann.bbox[2], 124.0)
@@ -222,9 +234,7 @@ class WritePredictionsJsonTests(unittest.TestCase):
                     area=70,
                 ),
             ),
-            graph_edges=(
-                GraphEdgeSpec("head_to_stem", "pred-0-0", "pred-0-1"),
-            ),
+            graph_edges=(GraphEdgeSpec("head_to_stem", "pred-0-0", "pred-0-1"),),
             duration_sequence=("quarter",),
         )
 
@@ -286,7 +296,12 @@ class WritePredictionsJsonTests(unittest.TestCase):
             width=10,
             height=10,
             annotations=(
-                Annotation(ann_id="x", bbox=(0.0, 0.0, 1.0, 1.0), cat_name="notInTaxonomy", area=1),
+                Annotation(
+                    ann_id="x",
+                    bbox=(0.0, 0.0, 1.0, 1.0),
+                    cat_name="notInTaxonomy",
+                    area=1,
+                ),
             ),
             graph_edges=(),
             duration_sequence=(),
@@ -299,7 +314,9 @@ class WritePredictionsJsonTests(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    (Path(__file__).parent.parent / "data" / "ds2_dense" / "deepscores_test.json").exists(),
+    (
+        Path(__file__).parent.parent / "data" / "ds2_dense" / "deepscores_test.json"
+    ).exists(),
     "local DeepScores subset is not installed",
 )
 class DeriveGroundTruthTests(unittest.TestCase):

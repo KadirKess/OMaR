@@ -201,26 +201,39 @@ class EdgePrf1Tests(unittest.TestCase):
 class SymbolErrorRateTests(unittest.TestCase):
     def test_identical_sequences_are_zero(self):
         self.assertEqual(
-            symbol_error_rate(("quarter", "eighth", "eighth"), ("quarter", "eighth", "eighth")), 0.0
+            symbol_error_rate(
+                ("quarter", "eighth", "eighth"), ("quarter", "eighth", "eighth")
+            ),
+            0.0,
         )
 
     def test_single_substitution(self):
         # ref length 4, one substitution -> 1/4
         self.assertAlmostEqual(
-            symbol_error_rate(("quarter", "eighth", "eighth", "eighth"),
-                                ("quarter", "quarter", "eighth", "eighth")), 0.25
+            symbol_error_rate(
+                ("quarter", "eighth", "eighth", "eighth"),
+                ("quarter", "quarter", "eighth", "eighth"),
+            ),
+            0.25,
         )
 
     def test_one_insertion_in_hypothesis(self):
         # ref length 2, one extra symbol -> 1 edit / 2
-        self.assertAlmostEqual(symbol_error_rate(("quarter", "eighth", "eighth"), ("quarter", "eighth")), 0.5)
+        self.assertAlmostEqual(
+            symbol_error_rate(("quarter", "eighth", "eighth"), ("quarter", "eighth")),
+            0.5,
+        )
 
     def test_one_deletion_from_hypothesis(self):
-        self.assertAlmostEqual(symbol_error_rate(("quarter",), ("quarter", "eighth")), 0.5)
+        self.assertAlmostEqual(
+            symbol_error_rate(("quarter",), ("quarter", "eighth")), 0.5
+        )
 
     def test_completely_different_sequences(self):
         # both length 2, both differ -> 2 edits / 2 = 1.0
-        self.assertAlmostEqual(symbol_error_rate(("quarter", "quarter"), ("eighth", "eighth")), 1.0)
+        self.assertAlmostEqual(
+            symbol_error_rate(("quarter", "quarter"), ("eighth", "eighth")), 1.0
+        )
 
     def test_empty_reference_with_hypothesis_is_one(self):
         self.assertEqual(symbol_error_rate(("quarter",), ()), 1.0)

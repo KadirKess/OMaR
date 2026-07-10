@@ -149,9 +149,13 @@ def _duration_sequence_from_graph(graph, origin=(0, 0)) -> list[tuple[float, str
     for n in nodes:
         if n.kind == NodeKind.BEAMED_GROUP:
             for m in n.attrs.get("members", ()):
-                pairs.append((_node_x(m, ox), _DURATION_TOKENS.get(m.attrs.get("duration"), "?")))
+                pairs.append(
+                    (_node_x(m, ox), _DURATION_TOKENS.get(m.attrs.get("duration"), "?"))
+                )
         else:
-            pairs.append((_node_x(n, ox), _DURATION_TOKENS.get(n.attrs.get("duration"), "?")))
+            pairs.append(
+                (_node_x(n, ox), _DURATION_TOKENS.get(n.attrs.get("duration"), "?"))
+            )
     return pairs
 
 
@@ -268,9 +272,7 @@ def derive_ground_truth(
             for i in range(len(gt))
             if cat_names[i] in ("noteheadBlackOnLine", "noteheadBlackInSpace")
         ]
-        staff_space = (
-            max(4.0, float(np.median(head_heights))) if head_heights else 4.0
-        )
+        staff_space = max(4.0, float(np.median(head_heights))) if head_heights else 4.0
     link_d = _link_distance(staff_space)
 
     stem_idx = [i for i, n in enumerate(cat_names) if n == "stem"]

@@ -45,11 +45,15 @@ def _predict_page(dataset, splitter, image_id, samples):
         crop_results.append((result, graph, sample.origin))
         staff_lines_per_crop.append(system_lines)
 
-    return build_predicted_page(image, crop_results, staff_lines_per_crop, staff_line=staff_line)
+    return build_predicted_page(
+        image, crop_results, staff_lines_per_crop, staff_line=staff_line
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export clean DeepScores pages to MIDI")
+    parser = argparse.ArgumentParser(
+        description="Export clean DeepScores pages to MIDI"
+    )
     parser.add_argument("--split", choices=("train", "test"), default="test")
     parser.add_argument("--limit", type=int, default=len(CLEAN_PAGE_IDS))
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

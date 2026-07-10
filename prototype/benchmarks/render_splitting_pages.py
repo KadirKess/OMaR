@@ -9,6 +9,7 @@ from src.symbols.splitter import PrimitiveSplitter
 DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"
 DEFAULT_OUTPUT = Path(__file__).parent.parent / "output" / "splitting_pages"
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pages", type=int, default=2)

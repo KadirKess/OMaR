@@ -2,7 +2,11 @@ import unittest
 
 import numpy as np
 
-from src.reconstruction.assembly import compute_staff_positions, graph_from_split, run_rewrite
+from src.reconstruction.assembly import (
+    compute_staff_positions,
+    graph_from_split,
+    run_rewrite,
+)
 from src.models.graph import NodeKind
 from src.models.primitives import Primitive, PrimitiveKind, PrimitiveSplit, SplitStatus
 from src.reconstruction.semantics import (
@@ -127,6 +131,7 @@ class PitchTests(unittest.TestCase):
         assign_pitches(graph, clef="bass")
         (note,) = graph.nodes.values()
         self.assertEqual(note.attrs["pitch"], "G2")
+
 
 class ValidationTests(unittest.TestCase):
     def four_quarters(self):

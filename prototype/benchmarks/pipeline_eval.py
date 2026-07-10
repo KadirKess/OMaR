@@ -130,7 +130,9 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         image, crop_results, staff_lines_per_crop, staff_line=staff_line
     )
     truth = derive_ground_truth(
-        dataset, image_id, bbox_filter=_make_crop_bbox_filter(samples),
+        dataset,
+        image_id,
+        bbox_filter=_make_crop_bbox_filter(samples),
         staff_lines=staff_rows,
     )
 
@@ -221,9 +223,7 @@ def _aggregate(pages):
     for p in pages:
         for c, ap in p["per_class_ap"].items():
             class_aps[c].append(ap)
-    per_class_mean = {
-        c: float(np.mean(v)) for c, v in class_aps.items() if v
-    }
+    per_class_mean = {c: float(np.mean(v)) for c, v in class_aps.items() if v}
     confusion_total = np.zeros((len(CLASSES), len(CLASSES)), dtype=int)
     for p in pages:
         confusion_total += np.array(p["confusion_matrix"], dtype=int)
@@ -251,7 +251,12 @@ def main():
     parser.add_argument("--iou-threshold", type=float, default=0.3)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--write-json-pages", action="store_true")
-    parser.add_argument("--seed", type=int, default=None, help="shuffle image order for reproducible random page selection")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="shuffle image order for reproducible random page selection",
+    )
     args = parser.parse_args()
 
     dataset = DeepScoresDataset(DATA_DIR, split=args.split)
@@ -293,16 +298,16 @@ def main():
         f"  mask notehead F1: {summary['mask_prf1'].get('notehead', {}).get('f1', 0.0):.4f}   "
         f"(stage 5, splitting)"
     )
-    print(f"  mAP @IoU={args.iou_threshold:g}: {summary['mAP']:.4f}   (stage 5, detection)")
+    print(
+        f"  mAP @IoU={args.iou_threshold:g}: {summary['mAP']:.4f}   (stage 5, detection)"
+    )
     print(f"  accuracy:         {summary['accuracy']:.4f}   (stage 5, classification)")
     print(
         f"  edge P/R/F1:      {summary['edge_precision']:.4f} / "
         f"{summary['edge_recall']:.4f} / {summary['edge_f1']:.4f}   (stage 6, reconstruction)"
     )
     print(f"  SER:              {summary['ser']:.4f}   (end-to-end, duration)")
-    print(
-        f"  pitch SER:        {summary['pitch_ser']:.4f}   (end-to-end, pitch)"
-    )
+    print(f"  pitch SER:        {summary['pitch_ser']:.4f}   (end-to-end, pitch)")
     print()
     print(f"report written to {summary_path}")
 

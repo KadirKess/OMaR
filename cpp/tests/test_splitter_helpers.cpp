@@ -6,28 +6,28 @@
 namespace
 {
 
-int ink(const cv::Mat& m)
-{
-	return cv::countNonZero(m);
-}
+	int ink(const cv::Mat& m)
+	{
+		return cv::countNonZero(m);
+	}
 
-void add_head(omr::Mask& image, int x, int y, int rx = 7, int ry = 5)
-{
-	omr::Mask head = omr::ellipse_mask(image.size(), x, y, rx, ry);
-	image = image | head;
-}
+	void add_head(omr::Mask& image, int x, int y, int rx = 7, int ry = 5)
+	{
+		omr::Mask head = omr::ellipse_mask(image.size(), x, y, rx, ry);
+		image = image | head;
+	}
 
-void fill_rect(omr::Mask& image, int y0, int y1, int x0, int x1)
-{
-	for (int y = y0; y < y1; ++y)
-		for (int x = x0; x < x1; ++x)
-			image.set(y, x, 255);
-}
+	void fill_rect(omr::Mask& image, int y0, int y1, int x0, int x1)
+	{
+		for (int y = y0; y < y1; ++y)
+			for (int x = x0; x < x1; ++x)
+				image.set(y, x, 255);
+	}
 
-int count_kind(const omr::PrimitiveSplit& split, omr::PrimitiveKind kind)
-{
-	return static_cast<int>(split.of_kind(kind).size());
-}
+	int count_kind(const omr::PrimitiveSplit& split, omr::PrimitiveKind kind)
+	{
+		return static_cast<int>(split.of_kind(kind).size());
+	}
 
 } // namespace
 
@@ -242,8 +242,8 @@ TEST(PrimitiveSplitter, UnexplainedRegionMakesResultUncertain)
 TEST(PrimitiveSplitter, OpenHeadIsNotAcceptedAsSupported)
 {
 	omr::Mask image(60, 50);
-	cv::ellipse(image.mat(), cv::Point(20, 40), cv::Size(7, 5), 0.0, 0.0,
-				360.0, cv::Scalar(255), 1);
+	cv::ellipse(image.mat(), cv::Point(20, 40), cv::Size(7, 5), 0.0, 0.0, 360.0,
+				cv::Scalar(255), 1);
 	fill_rect(image, 12, 41, 26, 28);
 
 	const omr::PrimitiveSplitter splitter;

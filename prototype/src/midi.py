@@ -64,12 +64,8 @@ def write_midi(
         note = pitch_token_to_midi(pitch_token)
         if note is None:
             continue
-        track.append(
-            mido.Message("note_on", note=note, velocity=64, time=0)
-        )
-        track.append(
-            mido.Message("note_off", note=note, velocity=0, time=duration)
-        )
+        track.append(mido.Message("note_on", note=note, velocity=64, time=0))
+        track.append(mido.Message("note_off", note=note, velocity=0, time=duration))
         written += 1
 
     track.append(mido.MetaMessage("end_of_track"))

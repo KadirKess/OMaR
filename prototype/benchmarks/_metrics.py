@@ -46,9 +46,7 @@ def match_pairs(pred_anns, gt_anns, iou_threshold: float = 0.5) -> list[PairMatc
             continue
         used_pred.add(p.ann_id)
         used_gt.add(g.ann_id)
-        matches.append(
-            PairMatch(p.ann_id, g.ann_id, iou, p.cat_name, g.cat_name)
-        )
+        matches.append(PairMatch(p.ann_id, g.ann_id, iou, p.cat_name, g.cat_name))
     return matches
 
 
@@ -125,9 +123,7 @@ def edge_prf1(pred_edges, gt_edges, matches) -> tuple[float, float, float]:
     fp_unmatched = 0
     for e in pred_edges:
         if e.src_id in pred_to_gt and e.dst_id in pred_to_gt:
-            translated.add(
-                (e.relation, pred_to_gt[e.src_id], pred_to_gt[e.dst_id])
-            )
+            translated.add((e.relation, pred_to_gt[e.src_id], pred_to_gt[e.dst_id]))
         else:
             # predicted edge touching an unmatched primitive: hallucinated
             fp_unmatched += 1
