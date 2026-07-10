@@ -15,3 +15,7 @@ gtest_discover_tests(test_splitter_helpers)
 add_executable(test_preprocessor test_preprocessor.cpp)
 target_link_libraries(test_preprocessor PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_preprocessor)
+
+add_executable(test_deepscores_dataset test_deepscores_dataset.cpp)
+target_link_libraries(test_deepscores_dataset PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_deepscores_dataset)
