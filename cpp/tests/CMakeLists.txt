@@ -39,3 +39,7 @@ gtest_discover_tests(test_assembly)
 add_executable(test_semantics test_semantics.cpp)
 target_link_libraries(test_semantics PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_semantics)
+
+add_executable(test_midi test_midi.cpp)
+target_link_libraries(test_midi PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_midi)

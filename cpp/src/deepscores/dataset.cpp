@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <fstream>
-#include <numeric>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <random>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "preprocessing/preprocessor.h"
@@ -96,15 +98,94 @@ namespace omr
 			}
 		}
 
-		cv::Mat normalize_semantic(cv::Mat mat)
+		std::optional<std::vector<cv::Vec3b>>
+		read_png_palette(const std::filesystem::path& path)
+		{
+			std::ifstream file(path, std::ios::binary);
+			if (!file)
+				return std::nullopt;
+			std::vector<std::uint8_t> data(
+				(std::istreambuf_iterator<char>(file)),
+				std::istreambuf_iterator<char>());
+			if (data.size() < 8)
+				return std::nullopt;
+			const std::uint8_t sig[] = { 0x89, 0x50, 0x4E, 0x47,
+										 0x0D, 0x0A, 0x1A, 0x0A };
+			if (std::memcmp(data.data(), sig, 8) != 0)
+				return std::nullopt;
+			std::size_t pos = 8;
+			while (pos + 8 <= data.size())
+			{
+				const std::uint32_t length =
+					(static_cast<std::uint32_t>(data[pos]) << 24)
+					| (static_cast<std::uint32_t>(data[pos + 1]) << 16)
+					| (static_cast<std::uint32_t>(data[pos + 2]) << 8)
+					| static_cast<std::uint32_t>(data[pos + 3]);
+				pos += 4;
+				const char type[5] = { static_cast<char>(data[pos]),
+									   static_cast<char>(data[pos + 1]),
+									   static_cast<char>(data[pos + 2]),
+									   static_cast<char>(data[pos + 3]), 0 };
+				pos += 4;
+				if (pos + length + 4 > data.size())
+					break;
+				if (std::strcmp(type, "PLTE") == 0)
+				{
+					const std::size_t n = length / 3;
+					std::vector<cv::Vec3b> palette(n);
+					for (std::size_t i = 0; i < n; ++i)
+						palette[i] =
+							cv::Vec3b(data[pos + i * 3 + 2],
+									  data[pos + i * 3 + 1], data[pos + i * 3]);
+					return palette;
+				}
+				pos += length + 4;
+			}
+			return std::nullopt;
+		}
+
+		cv::Mat normalize_semantic(cv::Mat mat,
+								   const std::filesystem::path& path)
 		{
 			if (mat.empty())
 				throw std::runtime_error("failed to read semantic mask");
 			if (mat.channels() == 1)
 				return mat;
-			std::vector<cv::Mat> channels;
-			cv::split(mat, channels);
-			return channels[0];
+			auto palette = read_png_palette(path);
+			if (!palette || palette->empty())
+			{
+				std::vector<cv::Mat> channels;
+				cv::split(mat, channels);
+				return channels[0];
+			}
+			std::unordered_map<std::uint32_t, std::uint8_t> lookup;
+			lookup.reserve(palette->size());
+			for (std::size_t i = 0; i < palette->size(); ++i)
+			{
+				const auto& bgr = (*palette)[i];
+				const std::uint32_t key =
+					(static_cast<std::uint32_t>(bgr[0]) << 16)
+					| (static_cast<std::uint32_t>(bgr[1]) << 8)
+					| static_cast<std::uint32_t>(bgr[2]);
+				lookup.emplace(key, static_cast<std::uint8_t>(i));
+			}
+			cv::Mat1b out = cv::Mat1b::zeros(mat.size());
+			for (int y = 0; y < mat.rows; ++y)
+			{
+				const auto* src = mat.ptr<cv::Vec3b>(y);
+				auto* dst = out.ptr<std::uint8_t>(y);
+				for (int x = 0; x < mat.cols; ++x)
+				{
+					const auto& bgr = src[x];
+					const std::uint32_t key =
+						(static_cast<std::uint32_t>(bgr[0]) << 16)
+						| (static_cast<std::uint32_t>(bgr[1]) << 8)
+						| static_cast<std::uint32_t>(bgr[2]);
+					auto it = lookup.find(key);
+					dst[x] = it != lookup.end() ? it->second : 0;
+				}
+			}
+			return out;
 		}
 	} // namespace
 
@@ -174,7 +255,7 @@ namespace omr
 			filename.replace(pos, 4, "_seg.png");
 		const auto path = m_root / "segmentation" / filename;
 		return normalize_semantic(
-			cv::imread(path.string(), cv::IMREAD_UNCHANGED));
+			cv::imread(path.string(), cv::IMREAD_UNCHANGED), path);
 	}
 
 	Mask DeepScoresDataset::ink_mask(const DatasetImage& image) const
@@ -251,11 +332,14 @@ namespace omr
 	}
 
 	std::vector<CropSample> DeepScoresDataset::iter_supported_crops(
-		std::optional<int> limit,
-		std::optional<unsigned int> shuffle_seed) const
+		std::optional<int> limit, std::optional<unsigned int> shuffle_seed,
+		std::optional<int> max_pages,
+		std::optional<std::unordered_set<std::string>> image_id_filter) const
 	{
 		std::vector<CropSample> samples;
 		if (limit && *limit <= 0)
+			return samples;
+		if (max_pages && *max_pages <= 0)
 			return samples;
 
 		std::unordered_set<std::string> target_ids;
@@ -274,15 +358,29 @@ namespace omr
 			(void)image;
 			image_ids.push_back(id);
 		}
-		std::sort(image_ids.begin(), image_ids.end());
+		std::sort(image_ids.begin(), image_ids.end(),
+				  [](const std::string& a, const std::string& b) {
+					  try
+					  {
+						  return std::stoll(a) < std::stoll(b);
+					  }
+					  catch (...)
+					  {
+						  return a < b;
+					  }
+				  });
 		if (shuffle_seed)
 		{
 			std::mt19937 rng(*shuffle_seed);
 			std::shuffle(image_ids.begin(), image_ids.end(), rng);
 		}
 
+		std::unordered_set<std::string> pages_seen;
+
 		for (const auto& image_id : image_ids)
 		{
+			if (image_id_filter && !image_id_filter->count(image_id))
+				continue;
 			const DatasetImage& image = images.at(image_id);
 			const auto by_it = by_image.find(image_id);
 			if (by_it == by_image.end())
@@ -493,6 +591,10 @@ namespace omr
 				sample.origin = { x0, y0 };
 				samples.push_back(std::move(sample));
 				if (limit && static_cast<int>(samples.size()) >= *limit)
+					return samples;
+				bool new_page = pages_seen.insert(image_id).second;
+				if (max_pages && new_page
+					&& static_cast<int>(pages_seen.size()) >= *max_pages)
 					return samples;
 			}
 		}
