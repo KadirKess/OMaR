@@ -35,8 +35,21 @@ target_link_libraries(omr_core PUBLIC
 )
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/pipeline_eval.cpp")
+  add_library(omr_pipeline_common STATIC apps/pipeline_common.cpp)
+  target_include_directories(omr_pipeline_common PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/apps"
+    ${OpenCV_INCLUDE_DIRS}
+  )
+  target_link_libraries(omr_pipeline_common PUBLIC omr_core)
+
   add_executable(omr_pipeline_eval apps/pipeline_eval.cpp)
-  target_link_libraries(omr_pipeline_eval PRIVATE omr_core)
+  target_link_libraries(omr_pipeline_eval PRIVATE omr_pipeline_common)
+
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/midi_export.cpp")
+    add_executable(omr_midi_export apps/midi_export.cpp)
+    target_link_libraries(omr_midi_export PRIVATE omr_pipeline_common)
+  endif()
 endif()
 
 option(OMR_BUILD_TESTS "Build the GoogleTest suite" ON)

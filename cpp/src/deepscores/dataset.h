@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -77,7 +78,10 @@ namespace omr
 
 		std::vector<CropSample> iter_supported_crops(
 			std::optional<int> limit = std::nullopt,
-			std::optional<unsigned int> shuffle_seed = std::nullopt) const;
+			std::optional<unsigned int> shuffle_seed = std::nullopt,
+			std::optional<int> max_pages = std::nullopt,
+			std::optional<std::unordered_set<std::string>> image_id_filter =
+				std::nullopt) const;
 
 		cv::Mat semantic_mask(const DatasetImage& image) const;
 		Mask ink_mask(const DatasetImage& image) const;

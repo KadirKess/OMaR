@@ -288,11 +288,11 @@ class DeepScoresDataset:
                 y1 = min(ink.shape[0], int(ys.max()) + margin + 1)
 
                 crop_truth = {
-                    kind: mask[y0:y1, x0:x1] for kind, mask in truth_full.items()
+                    kind: mask[y0:y1, x0:x1].copy() for kind, mask in truth_full.items()
                 }
                 yield CropSample(
-                    original_mask=ink[y0:y1, x0:x1],
-                    staffless_mask=compound[y0:y1, x0:x1],
+                    original_mask=ink[y0:y1, x0:x1].copy(),
+                    staffless_mask=compound[y0:y1, x0:x1].copy(),
                     truth_masks=crop_truth,
                     staff_space=staff_space,
                     staff_line=max(1.0, round(0.15 * staff_space)),
