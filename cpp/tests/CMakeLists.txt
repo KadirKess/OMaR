@@ -20,6 +20,10 @@ add_executable(test_deepscores_dataset test_deepscores_dataset.cpp)
 target_link_libraries(test_deepscores_dataset PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_deepscores_dataset)
 
+add_executable(test_deepscores_io test_deepscores_io.cpp)
+target_link_libraries(test_deepscores_io PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_deepscores_io)
+
 add_executable(test_assembly test_assembly.cpp)
 target_link_libraries(test_assembly PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_assembly)
