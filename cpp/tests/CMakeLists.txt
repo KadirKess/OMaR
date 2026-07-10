@@ -16,6 +16,10 @@ add_executable(test_metrics test_metrics.cpp)
 target_link_libraries(test_metrics PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_metrics)
 
+add_executable(test_evaluation test_evaluation.cpp)
+target_link_libraries(test_evaluation PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_evaluation)
+
 add_executable(test_preprocessor test_preprocessor.cpp)
 target_link_libraries(test_preprocessor PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_preprocessor)
