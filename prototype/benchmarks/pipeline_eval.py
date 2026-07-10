@@ -1,6 +1,7 @@
 import argparse
 import json
 from collections import defaultdict
+from itertools import groupby, islice
 from pathlib import Path
 
 import numpy as np
@@ -263,14 +264,11 @@ def main():
     splitter = PrimitiveSplitter()
     args.output.mkdir(parents=True, exist_ok=True)
 
-    grouped: dict[str, list] = defaultdict(list)
-    for sample in dataset.iter_supported_crops(shuffle_seed=args.seed):
-        grouped[sample.image_id].append(sample)
-        if len(grouped) >= args.limit:
-            break
-
     pages = []
-    for image_id, samples in grouped.items():
+    crops = dataset.iter_supported_crops(shuffle_seed=args.seed)
+    grouped = groupby(crops, key=lambda sample: sample.image_id)
+    for image_id, page_samples in islice(grouped, max(0, args.limit)):
+        samples = list(page_samples)
         try:
             page = evaluate_page(
                 dataset, splitter, image_id, samples, args.iou_threshold

@@ -13,6 +13,11 @@ DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"
 class DeepScoresSmokeTests(unittest.TestCase):
     def test_first_supported_crop_can_be_split(self):
         sample = next(DeepScoresDataset(DATA_DIR).iter_supported_crops(limit=1))
+        self.assertIsNone(sample.original_mask.base)
+        self.assertIsNone(sample.staffless_mask.base)
+        for mask in sample.truth_masks.values():
+            self.assertIsNone(mask.base)
+
         result = PrimitiveSplitter().split(
             sample.staffless_mask,
             sample.staff_space,
