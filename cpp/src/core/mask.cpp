@@ -1,8 +1,11 @@
 #include "core/mask.h"
 
-#include <opencv2/geometry/2d.hpp>
-#include <stdexcept>
+#include <opencv2/core/version.hpp>
+#if CV_MAJOR_VERSION >= 5
+#	include <opencv2/geometry/2d.hpp>
+#endif
 
+#include <stdexcept>
 namespace omr
 {
 
