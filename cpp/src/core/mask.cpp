@@ -1,5 +1,6 @@
 #include "core/mask.h"
 
+#include <opencv2/geometry/2d.hpp>
 #include <stdexcept>
 
 namespace omr
