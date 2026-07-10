@@ -19,3 +19,11 @@ gtest_discover_tests(test_preprocessor)
 add_executable(test_deepscores_dataset test_deepscores_dataset.cpp)
 target_link_libraries(test_deepscores_dataset PRIVATE omr_core GTest::gtest_main)
 gtest_discover_tests(test_deepscores_dataset)
+
+add_executable(test_assembly test_assembly.cpp)
+target_link_libraries(test_assembly PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_assembly)
+
+add_executable(test_semantics test_semantics.cpp)
+target_link_libraries(test_semantics PRIVATE omr_core GTest::gtest_main)
+gtest_discover_tests(test_semantics)
