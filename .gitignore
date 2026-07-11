@@ -26,6 +26,7 @@ __pycache__/
 /cpp/.cache/
 /cpp/compile_commands.json
 /cpp/output/
+/cpp/benchmarks/runs/
 
 # Log files
 *.log
@@ -41,6 +42,4 @@ __pycache__/
 *.bbl
 
 # Temporary files
-docs/
-AGENTS.md
 .vscode/

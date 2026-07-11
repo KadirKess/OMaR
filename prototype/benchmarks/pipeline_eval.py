@@ -1,7 +1,8 @@
 import argparse
+import csv
 import json
+import statistics
 from collections import defaultdict
-from itertools import groupby, islice
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,22 @@ from src.symbols.splitter import PrimitiveSplitter
 DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"
 DEFAULT_OUTPUT = Path(__file__).parent.parent / "output" / "pipeline_eval"
 CLASSES = tuple(SCOPED_CATEGORY_NAMES)
+
+
+def _read_page_ids_file(path):
+    """Read a TSV manifest (band, image_id, python_n_crops) preserving order."""
+    entries = []
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            entries.append(
+                {
+                    "band": row["band"],
+                    "image_id": str(row["image_id"]),
+                    "python_n_crops": int(row["python_n_crops"]),
+                }
+            )
+    return entries
 
 
 def _recover_staff_rows(image_path, frac=0.5):
@@ -103,7 +120,15 @@ def _make_crop_bbox_filter(samples):
     return inside
 
 
-def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
+def evaluate_page(
+    dataset,
+    splitter,
+    image_id,
+    samples,
+    iou_threshold=0.5,
+    band=None,
+    crop_diagnostics=None,
+):
     image = dataset.images[str(image_id)]
     image_path = DATA_DIR / "images" / image["filename"]
     staff_rows = _recover_staff_rows(image_path) if image_path.exists() else ()
@@ -122,20 +147,33 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         )
         crop_results.append((result, graph, sample.origin))
         staff_lines_per_crop.append(system_lines)
-        for kind, score in evaluate_split(
-            result, sample.truth_masks, sample.staffless_mask
-        ).items():
-            mask_scores_per_kind[kind].append(score)
+        if sample.truth_masks:
+            for kind, score in evaluate_split(
+                result, sample.truth_masks, sample.staffless_mask
+            ).items():
+                mask_scores_per_kind[kind].append(score)
 
     predicted = build_predicted_page(
         image, crop_results, staff_lines_per_crop, staff_line=staff_line
     )
-    truth = derive_ground_truth(
-        dataset,
-        image_id,
-        bbox_filter=_make_crop_bbox_filter(samples),
-        staff_lines=staff_rows,
-    )
+    # Ground truth is loaded only after inference and covers the full page.
+    truth = derive_ground_truth(dataset, image_id, staff_lines=staff_rows)
+
+    useful_crops = set()
+    covered_gt = 0
+    duplicate_covered_gt = 0
+    for annotation in truth.annotations:
+        bbox = annotation.bbox
+        cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+        hits = 0
+        for index, sample in enumerate(samples):
+            ox, oy = sample.origin
+            h, w = sample.staffless_mask.shape
+            if ox <= cx < ox + w and oy <= cy < oy + h:
+                hits += 1
+                useful_crops.add(index)
+        covered_gt += hits > 0
+        duplicate_covered_gt += hits > 1
 
     matches = match_pairs(
         predicted.annotations, truth.annotations, iou_threshold=iou_threshold
@@ -162,7 +200,9 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
     return {
         "image_id": str(image_id),
         "filename": image["filename"],
+        "band": band,
         "n_crops": len(samples),
+        "crop_diagnostics": crop_diagnostics.to_dict() if crop_diagnostics else None,
         "mask_prf1": mask_means,
         "mAP": mAP,
         "per_class_ap": per_class_ap,
@@ -175,6 +215,11 @@ def evaluate_page(dataset, splitter, image_id, samples, iou_threshold=0.5):
         "pitch_ser": pitch_ser,
         "n_pred": len(predicted.annotations),
         "n_gt": len(truth.annotations),
+        "coverage": covered_gt / len(truth.annotations) if truth.annotations else 0.0,
+        "covered_gt": covered_gt,
+        "duplicate_covered_gt": duplicate_covered_gt,
+        "useful_crops": len(useful_crops),
+        "irrelevant_crops": len(samples) - len(useful_crops),
         "pred_duration_sequence": list(predicted.duration_sequence),
         "gt_duration_sequence": list(truth.duration_sequence),
         "pred_pitch_sequence": list(predicted.pitch_sequence),
@@ -228,8 +273,32 @@ def _aggregate(pages):
     confusion_total = np.zeros((len(CLASSES), len(CLASSES)), dtype=int)
     for p in pages:
         confusion_total += np.array(p["confusion_matrix"], dtype=int)
+
+    n_crops_list = [p["n_crops"] for p in pages]
+    crop_stats = {
+        "total": int(sum(n_crops_list)),
+        "mean": float(np.mean(n_crops_list)) if n_crops_list else 0.0,
+        "median": float(statistics.median(n_crops_list)) if n_crops_list else 0.0,
+        "min": int(min(n_crops_list)) if n_crops_list else 0,
+        "max": int(max(n_crops_list)) if n_crops_list else 0,
+        "zero_crop_pages": [p["image_id"] for p in pages if p["n_crops"] == 0],
+        "per_page": {p["image_id"]: int(p["n_crops"]) for p in pages},
+    }
+    by_band = defaultdict(list)
+    for p in pages:
+        by_band[p.get("band") or "unknown"].append(p["n_crops"])
+    crop_stats["by_band"] = {
+        b: {"total": int(sum(v)), "mean": float(np.mean(v)) if v else 0.0}
+        for b, v in sorted(by_band.items())
+    }
+
     return {
         "n_pages": len(pages),
+        "crop_stats": crop_stats,
+        "coverage": float(np.mean([p["coverage"] for p in pages])),
+        "useful_crops": int(sum(p["useful_crops"] for p in pages)),
+        "irrelevant_crops": int(sum(p["irrelevant_crops"] for p in pages)),
+        "duplicate_covered_gt": int(sum(p["duplicate_covered_gt"] for p in pages)),
         "mask_prf1": mask_means,
         "mAP": means["mAP"],
         "per_class_ap": per_class_mean,
@@ -258,6 +327,13 @@ def main():
         default=None,
         help="shuffle image order for reproducible random page selection",
     )
+    parser.add_argument(
+        "--page-ids-file",
+        type=Path,
+        default=None,
+        help="TSV manifest (band, image_id, python_n_crops) to evaluate a "
+        "fixed page set in manifest order, including zero-crop pages",
+    )
     args = parser.parse_args()
 
     dataset = DeepScoresDataset(DATA_DIR, split=args.split)
@@ -265,27 +341,88 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     pages = []
-    crops = dataset.iter_supported_crops(shuffle_seed=args.seed)
-    grouped = groupby(crops, key=lambda sample: sample.image_id)
-    for image_id, page_samples in islice(grouped, max(0, args.limit)):
-        samples = list(page_samples)
-        try:
-            page = evaluate_page(
-                dataset, splitter, image_id, samples, args.iou_threshold
-            )
-        except Exception as exc:  # pragma: no cover - benchmark safety net
-            print(f"[skip] image {image_id}: {exc}")
-            continue
-        pages.append(page)
-        print(_format_row(page, width=12))
-        if args.write_json_pages:
-            out_path = args.output / f"page_{image_id}.json"
-            with out_path.open("w", encoding="utf-8") as f:
-                json.dump(page, f, indent=2)
+    requested_page_ids = None
+
+    if args.page_ids_file is not None:
+        manifest = _read_page_ids_file(args.page_ids_file)
+        requested_page_ids = [e["image_id"] for e in manifest]
+        band_by_id = {e["image_id"]: e["band"] for e in manifest}
+        print(f"evaluating {len(requested_page_ids)} pages from manifest")
+        for image_id in requested_page_ids:
+            samples = dataset.inference_page_compounds(image_id)
+            try:
+                page = evaluate_page(
+                    dataset,
+                    splitter,
+                    image_id,
+                    samples,
+                    args.iou_threshold,
+                    band=band_by_id.get(image_id),
+                    crop_diagnostics=None,
+                )
+            except Exception as exc:  # pragma: no cover - benchmark safety net
+                print(f"[skip] image {image_id}: {exc}")
+                page = {
+                    "image_id": str(image_id),
+                    "filename": dataset.images.get(str(image_id), {}).get(
+                        "filename", ""
+                    ),
+                    "band": band_by_id.get(image_id),
+                    "n_crops": 0,
+                    "crop_diagnostics": None,
+                    "mask_prf1": {},
+                    "mAP": 0.0,
+                    "per_class_ap": {},
+                    "accuracy": 0.0,
+                    "confusion_matrix": [],
+                    "edge_precision": 0.0,
+                    "edge_recall": 0.0,
+                    "edge_f1": 0.0,
+                    "ser": 0.0,
+                    "pitch_ser": 0.0,
+                    "n_pred": 0,
+                    "n_gt": 0,
+                    "pred_duration_sequence": [],
+                    "gt_duration_sequence": [],
+                    "pred_pitch_sequence": [],
+                    "gt_pitch_sequence": [],
+                    "error": str(exc),
+                }
+            pages.append(page)
+            print(_format_row(page, width=12))
+            if args.write_json_pages:
+                out_path = args.output / f"page_{image_id}.json"
+                with out_path.open("w", encoding="utf-8") as f:
+                    json.dump(page, f, indent=2)
+    else:
+        image_ids = sorted(dataset.images, key=int)
+        if args.seed is not None:
+            rng = np.random.default_rng(args.seed)
+            rng.shuffle(image_ids)
+        for image_id in image_ids[: max(0, args.limit)]:
+            samples = dataset.inference_page_compounds(image_id)
+            try:
+                page = evaluate_page(
+                    dataset, splitter, image_id, samples, args.iou_threshold
+                )
+            except Exception as exc:  # pragma: no cover - benchmark safety net
+                print(f"[skip] image {image_id}: {exc}")
+                continue
+            pages.append(page)
+            print(_format_row(page, width=12))
+            if args.write_json_pages:
+                out_path = args.output / f"page_{image_id}.json"
+                with out_path.open("w", encoding="utf-8") as f:
+                    json.dump(page, f, indent=2)
 
     summary = _aggregate(pages)
     summary["classes"] = list(CLASSES)
     summary["iou_threshold"] = float(args.iou_threshold)
+    summary["inference_ground_truth_free"] = True
+    summary["crop_discovery"] = "image_connected_components"
+    if requested_page_ids is not None:
+        summary["requested_page_ids"] = requested_page_ids
+        summary["evaluated_page_ids"] = [p["image_id"] for p in pages]
     summary_path = args.output / "report.json"
     with summary_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
