@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +28,24 @@
 namespace
 {
 	using json = nlohmann::ordered_json;
+
+	using clock_type = std::chrono::steady_clock;
+
+	double elapsed_ms(clock_type::time_point start, clock_type::time_point end)
+	{
+		return std::chrono::duration<double, std::milli>(end - start).count();
+	}
+
+	// Attach wall-clock timings (ms) covering the whole per-page pipeline.
+	// discover_ms: crop discovery incl. image decode / I/O.
+	// eval_ms: inference + reconstruction + metrics.
+	// elapsed_ms: total per-page wall time (discover + eval).
+	void set_timings(json& page, double discover_ms, double eval_ms)
+	{
+		page["discover_ms"] = discover_ms;
+		page["eval_ms"] = eval_ms;
+		page["elapsed_ms"] = discover_ms + eval_ms;
+	}
 
 	const std::vector<std::string> CLASSES = {
 		"noteheadBlackOnLine",
@@ -168,14 +187,16 @@ namespace
 		const std::filesystem::path& viz_dir)
 	{
 		auto [original_mask, staffless_mask, _] = dataset.load_page(image_id);
-		(void)staffless_mask;
-		cv::Mat1b gray;
-		cv::bitwise_not(original_mask.mat(), gray);
-		cv::Mat3b canvas;
-		cv::cvtColor(gray, canvas, cv::COLOR_GRAY2BGR);
-		const cv::Vec3b notehead_color(70, 70, 230);
-		const cv::Vec3b stem_color(40, 180, 40);
-		const cv::Vec3b beam_color(220, 120, 20);
+		(void)original_mask;
+		cv::Mat3b canvas(staffless_mask.mat().size(), cv::Vec3b(255, 255, 255));
+		canvas.setTo(cv::Vec3b(184, 184, 184), staffless_mask.mat());
+		const cv::Vec3b notehead_color(140, 26, 217);
+		const cv::Vec3b stem_color(230, 115, 26);
+		const cv::Vec3b beam_color(13, 140, 255);
+		const cv::Vec3b unknown_color(31, 31, 230);
+		const cv::Scalar link_color(0, 255, 0);
+		const cv::Scalar accepted_color(0, 255, 0);
+		const cv::Scalar uncertain_color(0, 215, 255);
 
 		for (std::size_t i = 0; i < samples.size() && i < crop_results.size();
 			 ++i)
@@ -188,7 +209,6 @@ namespace
 			for (const auto& prim : split.primitives)
 			{
 				cv::Vec3b color;
-				bool draw = true;
 				switch (prim.kind)
 				{
 				case omr::PrimitiveKind::NOTEHEAD:
@@ -201,11 +221,9 @@ namespace
 					color = beam_color;
 					break;
 				case omr::PrimitiveKind::UNKNOWN:
-					draw = false;
+					color = unknown_color;
 					break;
 				}
-				if (!draw)
-					continue;
 				for (int y = 0; y < prim.mask.rows(); ++y)
 					for (int x = 0; x < prim.mask.cols(); ++x)
 						if (prim.mask.at(y, x) && oy + y >= 0
@@ -223,17 +241,29 @@ namespace
 				auto [x0, y0] = center(s);
 				auto [x1, y1] = center(t);
 				cv::line(canvas, cv::Point(cvRound(x0), cvRound(y0)),
-						 cv::Point(cvRound(x1), cvRound(y1)),
-						 cv::Scalar(180, 30, 180), 1, cv::LINE_AA);
+						 cv::Point(cvRound(x1), cvRound(y1)), link_color, 1,
+						 cv::LINE_AA);
 			};
 			for (const auto& [s, t] : split.head_to_stem)
 				add_link(s, t);
 			for (const auto& [s, t] : split.stem_to_beam)
 				add_link(s, t);
+
+			if (split.status != omr::SplitStatus::REJECTED)
+			{
+				const cv::Scalar& box_color =
+					split.status == omr::SplitStatus::ACCEPTED
+					? accepted_color
+					: uncertain_color;
+				cv::rectangle(canvas,
+							  cv::Rect(ox, oy, sample.staffless_mask.cols(),
+									   sample.staffless_mask.rows()),
+							  box_color, 1);
+			}
 		}
 		const int scale = std::max(1, canvas.cols / 1800);
 		cv::rectangle(canvas,
-					  cv::Rect(12 * scale, 12 * scale, 390 * scale, 76 * scale),
+					  cv::Rect(12 * scale, 12 * scale, 430 * scale, 76 * scale),
 					  cv::Scalar(255, 255, 255), cv::FILLED);
 		cv::putText(canvas, "notehead", cv::Point(24 * scale, 42 * scale),
 					cv::FONT_HERSHEY_SIMPLEX, 0.55 * scale,
@@ -244,9 +274,12 @@ namespace
 		cv::putText(canvas, "beam", cv::Point(245 * scale, 42 * scale),
 					cv::FONT_HERSHEY_SIMPLEX, 0.55 * scale,
 					cv::Scalar(beam_color), scale, cv::LINE_AA);
+		cv::putText(canvas, "unknown", cv::Point(310 * scale, 42 * scale),
+					cv::FONT_HERSHEY_SIMPLEX, 0.55 * scale,
+					cv::Scalar(unknown_color), scale, cv::LINE_AA);
 		cv::putText(canvas, "association", cv::Point(24 * scale, 72 * scale),
-					cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale,
-					cv::Scalar(180, 30, 180), scale, cv::LINE_AA);
+					cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale, link_color, scale,
+					cv::LINE_AA);
 		std::filesystem::create_directories(viz_dir);
 		const auto output = viz_dir / (image_id + ".png");
 		if (!cv::imwrite(output.string(), canvas))
@@ -725,8 +758,13 @@ int main(int argc, char* argv[])
 		}
 
 		std::map<std::string, std::vector<omr::CropSample>> grouped;
+		std::map<std::string, double> discover_ms_by_id;
 		for (const auto& image_id : requested_page_ids)
+		{
+			const auto t0 = clock_type::now();
 			grouped[image_id] = dataset.discover_page_crops(image_id);
+			discover_ms_by_id[image_id] = elapsed_ms(t0, clock_type::now());
+		}
 
 		for (const auto& image_id : requested_page_ids)
 		{
@@ -738,10 +776,13 @@ int main(int argc, char* argv[])
 			try
 			{
 				std::vector<omr::pipeline::CropResult> crop_results_out;
+				const auto t1 = clock_type::now();
 				auto page = evaluate_page(
 					dataset, splitter, image_id, samples, args.iou_threshold,
 					args.data_dir, band, nullptr,
 					args.viz_dir.empty() ? nullptr : &crop_results_out);
+				set_timings(page, discover_ms_by_id[image_id],
+							elapsed_ms(t1, clock_type::now()));
 				pages.push_back(page);
 				print_row(page, 12);
 				if (args.write_json_pages)
@@ -789,6 +830,7 @@ int main(int argc, char* argv[])
 				stub["pred_pitch_sequence"] = json::array();
 				stub["gt_pitch_sequence"] = json::array();
 				stub["error"] = exc.what();
+				set_timings(stub, discover_ms_by_id[image_id], 0.0);
 				pages.push_back(stub);
 				print_row(stub, 12);
 			}
@@ -797,6 +839,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		std::map<std::string, std::vector<omr::CropSample>> grouped;
+		std::map<std::string, double> discover_ms_by_id;
 		std::vector<std::string> ids;
 		for (const auto& [id, image] : dataset.images)
 		{
@@ -809,17 +852,24 @@ int main(int argc, char* argv[])
 		if (args.limit > 0 && static_cast<int>(ids.size()) > args.limit)
 			ids.resize(args.limit);
 		for (const auto& id : ids)
+		{
+			const auto t0 = clock_type::now();
 			grouped[id] = dataset.discover_page_crops(id);
+			discover_ms_by_id[id] = elapsed_ms(t0, clock_type::now());
+		}
 
 		for (const auto& [image_id, samples] : grouped)
 		{
 			try
 			{
 				std::vector<omr::pipeline::CropResult> crop_results_out;
+				const auto t1 = clock_type::now();
 				auto page = evaluate_page(
 					dataset, splitter, image_id, samples, args.iou_threshold,
 					args.data_dir, "", nullptr,
 					args.viz_dir.empty() ? nullptr : &crop_results_out);
+				set_timings(page, discover_ms_by_id[image_id],
+							elapsed_ms(t1, clock_type::now()));
 				pages.push_back(page);
 				print_row(page, 12);
 				if (args.write_json_pages)

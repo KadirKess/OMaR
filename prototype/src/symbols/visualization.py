@@ -105,6 +105,77 @@ def render_split_diagnostics(
     plt.close(figure)
 
 
+def _page_overlay(staffless_mask, samples_and_results):
+    shape = staffless_mask.shape
+    page_masks = {
+        kind: np.zeros(shape, dtype=bool)
+        for kind in (
+            PrimitiveKind.NOTEHEAD,
+            PrimitiveKind.STEM,
+            PrimitiveKind.BEAM,
+            PrimitiveKind.UNKNOWN,
+        )
+    }
+    links = []
+    crop_boxes = []
+
+    for sample, result in samples_and_results:
+        for primitive in result.primitives:
+            _paste(page_masks[primitive.kind], primitive.mask, sample.origin)
+        ox, oy = sample.origin
+        for source, target in (*result.head_to_stem, *result.stem_to_beam):
+            sx, sy = _center(result.primitives[source])
+            tx, ty = _center(result.primitives[target])
+            links.append(((sx + ox, sy + oy), (tx + ox, ty + oy)))
+        if str(result.status) != "rejected":
+            crop_boxes.append(
+                (
+                    ox,
+                    oy,
+                    sample.staffless_mask.shape[1],
+                    sample.staffless_mask.shape[0],
+                    result.status,
+                )
+            )
+    return page_masks, links, crop_boxes
+
+
+def render_page_overlay(
+    staffless_mask: np.ndarray,
+    samples_and_results: list[tuple[CropSample, PrimitiveSplit]],
+    output_path: str | Path,
+    title: str,
+):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    page_masks, links, crop_boxes = _page_overlay(staffless_mask, samples_and_results)
+
+    dpi = 220
+    height, width = staffless_mask.shape
+    figsize = (width / dpi, height / dpi)
+    figure = plt.figure(figsize=figsize, dpi=dpi)
+    axis = figure.add_axes([0, 0, 1, 1])
+    axis.imshow(_overlay(staffless_mask, page_masks))
+    axis.axis("off")
+    for (x0, y0), (x1, y1) in links:
+        axis.plot((x0, x1), (y0, y1), color="lime", linewidth=0.6)
+    status_colors = {"accepted": "lime", "uncertain": "gold"}
+    for x, y, w, height, status in crop_boxes:
+        rectangle = plt.Rectangle(
+            (x, y),
+            w,
+            height,
+            fill=False,
+            edgecolor=status_colors[str(status)],
+            linewidth=0.5,
+        )
+        axis.add_patch(rectangle)
+
+    figure.savefig(output_path, dpi=dpi, facecolor="white")
+    plt.close(figure)
+
+
 def _paste(target, source, origin):
     x0, y0 = origin
     y1 = min(target.shape[0], y0 + source.shape[0])

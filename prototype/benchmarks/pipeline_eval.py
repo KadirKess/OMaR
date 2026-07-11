@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import statistics
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -227,6 +228,18 @@ def evaluate_page(
     }
 
 
+def _add_timings(page, t0, t1, t2):
+    """Attach wall-clock timings (ms) covering the whole per-page pipeline.
+
+    discover_ms: crop discovery incl. image decode / I/O.
+    eval_ms: inference + reconstruction + metrics.
+    elapsed_ms: total per-page wall time (discover + eval).
+    """
+    page["discover_ms"] = (t1 - t0) * 1000.0
+    page["eval_ms"] = (t2 - t1) * 1000.0
+    page["elapsed_ms"] = (t2 - t0) * 1000.0
+
+
 def _format_row(page, width):
     mask_f1 = page["mask_prf1"].get("notehead", {}).get("f1", 0.0)
     return (
@@ -349,7 +362,9 @@ def main():
         band_by_id = {e["image_id"]: e["band"] for e in manifest}
         print(f"evaluating {len(requested_page_ids)} pages from manifest")
         for image_id in requested_page_ids:
+            t0 = time.perf_counter()
             samples = dataset.inference_page_compounds(image_id)
+            t1 = time.perf_counter()
             try:
                 page = evaluate_page(
                     dataset,
@@ -360,8 +375,11 @@ def main():
                     band=band_by_id.get(image_id),
                     crop_diagnostics=None,
                 )
+                t2 = time.perf_counter()
+                _add_timings(page, t0, t1, t2)
             except Exception as exc:  # pragma: no cover - benchmark safety net
                 print(f"[skip] image {image_id}: {exc}")
+                t2 = time.perf_counter()
                 page = {
                     "image_id": str(image_id),
                     "filename": dataset.images.get(str(image_id), {}).get(
@@ -388,6 +406,7 @@ def main():
                     "gt_pitch_sequence": [],
                     "error": str(exc),
                 }
+                _add_timings(page, t0, t1, t2)
             pages.append(page)
             print(_format_row(page, width=12))
             if args.write_json_pages:
@@ -400,7 +419,9 @@ def main():
             rng = np.random.default_rng(args.seed)
             rng.shuffle(image_ids)
         for image_id in image_ids[: max(0, args.limit)]:
+            t0 = time.perf_counter()
             samples = dataset.inference_page_compounds(image_id)
+            t1 = time.perf_counter()
             try:
                 page = evaluate_page(
                     dataset, splitter, image_id, samples, args.iou_threshold
@@ -408,6 +429,8 @@ def main():
             except Exception as exc:  # pragma: no cover - benchmark safety net
                 print(f"[skip] image {image_id}: {exc}")
                 continue
+            t2 = time.perf_counter()
+            _add_timings(page, t0, t1, t2)
             pages.append(page)
             print(_format_row(page, width=12))
             if args.write_json_pages:

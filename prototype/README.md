@@ -24,8 +24,10 @@ src/
   deepscores/        dataset loader + DeepScores-format I/O
   reconstruction/    stage 3: assembly (graph rewrite) + semantics (duration/pitch)
 benchmarks/
-  _metrics.py        pure detection/classification/SER metrics
-  pipeline_eval.py  end-to-end staged benchmark
+  _metrics.py          pure detection/classification/SER metrics
+  pipeline_eval.py     end-to-end staged benchmark (per-page metrics + timing)
+  compare_py_cpp.py    join PY vs C++ per-page metrics/timing into one CSV
+  render_side_by_side.py  PY + C++ page visualization for one image id
 tests/               unit tests for splitting, assembly, semantics, metrics, I/O
 ```
 
@@ -91,7 +93,35 @@ uv run python -m benchmarks.pipeline_eval --split test --limit 50 \
 ```
 
 The stdout table and a JSON report land in `output/pipeline_eval/report.json`
-by default (one `page_<id>.json` per page with `--write-json-pages`).
+by default (one `page_<id>.json` per page with `--write-json-pages`). Each page
+JSON now also carries `discover_ms` / `eval_ms` / `elapsed_ms` (whole-pipeline
+wall time incl. image I/O).
+
+## Python vs C++ comparison
+
+`benchmarks/compare_py_cpp.py` runs both the Python and C++ `pipeline_eval`
+over an *identical* page set (forced identical via a shared `--page-ids-file`
+manifest, since the two iterate pages in different orders) and joins their
+per-page JSON into `output/compare_py_cpp/comparison.csv` -- one row per page
+with `py_*` / `cpp_*` columns for every metric plus timing and a `speedup`
+column. Build the C++ binary first (`cmake --build cpp/build --target
+omr_pipeline_eval`), then:
+
+```sh
+uv run python -m benchmarks.compare_py_cpp --split test --limit 30
+# or pin the exact pages:
+uv run python -m benchmarks.compare_py_cpp --page-ids-file pages.tsv
+```
+
+It also prints total wall time for each implementation and the overall speedup.
+
+`benchmarks/render_side_by_side.py` takes a single page id and stitches the
+Python full-page diagnostics next to the C++ colored-overlay canvas into one
+labeled PNG (`output/side_by_side/side_by_side_<id>.png`):
+
+```sh
+uv run python -m benchmarks.render_side_by_side 6 --split test
+```
 
 ## MIDI export
 
