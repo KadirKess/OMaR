@@ -6,9 +6,11 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import numpy as np
+
 from src.deepscores.dataset import DeepScoresDataset
 from src.symbols.splitter import PrimitiveSplitter
-from src.symbols.visualization import render_page_diagnostics
+from src.symbols.visualization import render_page_overlay
 
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "ds2_dense"
@@ -19,7 +21,7 @@ DEFAULT_CPP_BIN = (
 
 
 def _render_python(dataset, splitter, image_id, out_png):
-    """Render the Python full-page diagnostics for one page."""
+    """Render the Python full-page overlay for one page."""
     samples = dataset.inference_page_compounds(image_id)
     original, staffless, metadata = dataset.load_page(image_id)
     results = [
@@ -34,7 +36,7 @@ def _render_python(dataset, splitter, image_id, out_png):
         )
         for sample in samples
     ]
-    render_page_diagnostics(original, staffless, results, out_png, metadata["filename"])
+    render_page_overlay(staffless, results, out_png, metadata["filename"])
 
 
 def _render_cpp(cpp_bin, image_id, band, split, iou_threshold, data_dir, viz_dir):
@@ -106,7 +108,13 @@ def _stitch(py_png, cpp_png, out_png, image_id):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("image_id", help="DeepScores image id to render")
+    parser.add_argument(
+        "image_id",
+        nargs="?",
+        default=None,
+        help="DeepScores image id to render; if omitted, --seed picks one",
+    )
+    parser.add_argument("--seed", type=int, default=None, help="random page seed")
     parser.add_argument("--split", choices=("train", "test"), default="test")
     parser.add_argument("--iou-threshold", type=float, default=0.3)
     parser.add_argument("--data", type=Path, default=DATA_DIR)
@@ -114,11 +122,21 @@ def main():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    image_id = str(args.image_id)
     if not args.cpp_bin.exists():
         parser.error(f"cpp binary not found: {args.cpp_bin} (pass --cpp-bin)")
 
     dataset = DeepScoresDataset(args.data, split=args.split)
+
+    if args.image_id is None:
+        image_ids = sorted(dataset.images, key=int)
+        if not image_ids:
+            parser.error(f"no images in split '{args.split}'")
+        rng = np.random.default_rng(args.seed)
+        image_id = rng.choice(image_ids)
+        print(f"[pick] seed={args.seed} -> image_id {image_id}")
+    else:
+        image_id = str(args.image_id)
+
     if image_id not in dataset.images:
         parser.error(f"image id {image_id} not found in split '{args.split}'")
     splitter = PrimitiveSplitter()
