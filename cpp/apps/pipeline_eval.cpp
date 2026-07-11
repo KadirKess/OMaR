@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +28,25 @@
 namespace
 {
 	using json = nlohmann::ordered_json;
+
+	using clock_type = std::chrono::steady_clock;
+
+	double
+	elapsed_ms(clock_type::time_point start, clock_type::time_point end)
+	{
+		return std::chrono::duration<double, std::milli>(end - start).count();
+	}
+
+	// Attach wall-clock timings (ms) covering the whole per-page pipeline.
+	// discover_ms: crop discovery incl. image decode / I/O.
+	// eval_ms: inference + reconstruction + metrics.
+	// elapsed_ms: total per-page wall time (discover + eval).
+	void set_timings(json& page, double discover_ms, double eval_ms)
+	{
+		page["discover_ms"] = discover_ms;
+		page["eval_ms"] = eval_ms;
+		page["elapsed_ms"] = discover_ms + eval_ms;
+	}
 
 	const std::vector<std::string> CLASSES = {
 		"noteheadBlackOnLine",
@@ -725,8 +745,14 @@ int main(int argc, char* argv[])
 		}
 
 		std::map<std::string, std::vector<omr::CropSample>> grouped;
+		std::map<std::string, double> discover_ms_by_id;
 		for (const auto& image_id : requested_page_ids)
+		{
+			const auto t0 = clock_type::now();
 			grouped[image_id] = dataset.discover_page_crops(image_id);
+			discover_ms_by_id[image_id] =
+				elapsed_ms(t0, clock_type::now());
+		}
 
 		for (const auto& image_id : requested_page_ids)
 		{
@@ -738,10 +764,13 @@ int main(int argc, char* argv[])
 			try
 			{
 				std::vector<omr::pipeline::CropResult> crop_results_out;
+				const auto t1 = clock_type::now();
 				auto page = evaluate_page(
 					dataset, splitter, image_id, samples, args.iou_threshold,
 					args.data_dir, band, nullptr,
 					args.viz_dir.empty() ? nullptr : &crop_results_out);
+				set_timings(page, discover_ms_by_id[image_id],
+							elapsed_ms(t1, clock_type::now()));
 				pages.push_back(page);
 				print_row(page, 12);
 				if (args.write_json_pages)
@@ -789,6 +818,7 @@ int main(int argc, char* argv[])
 				stub["pred_pitch_sequence"] = json::array();
 				stub["gt_pitch_sequence"] = json::array();
 				stub["error"] = exc.what();
+				set_timings(stub, discover_ms_by_id[image_id], 0.0);
 				pages.push_back(stub);
 				print_row(stub, 12);
 			}
@@ -797,6 +827,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		std::map<std::string, std::vector<omr::CropSample>> grouped;
+		std::map<std::string, double> discover_ms_by_id;
 		std::vector<std::string> ids;
 		for (const auto& [id, image] : dataset.images)
 		{
@@ -809,17 +840,24 @@ int main(int argc, char* argv[])
 		if (args.limit > 0 && static_cast<int>(ids.size()) > args.limit)
 			ids.resize(args.limit);
 		for (const auto& id : ids)
+		{
+			const auto t0 = clock_type::now();
 			grouped[id] = dataset.discover_page_crops(id);
+			discover_ms_by_id[id] = elapsed_ms(t0, clock_type::now());
+		}
 
 		for (const auto& [image_id, samples] : grouped)
 		{
 			try
 			{
 				std::vector<omr::pipeline::CropResult> crop_results_out;
+				const auto t1 = clock_type::now();
 				auto page = evaluate_page(
 					dataset, splitter, image_id, samples, args.iou_threshold,
 					args.data_dir, "", nullptr,
 					args.viz_dir.empty() ? nullptr : &crop_results_out);
+				set_timings(page, discover_ms_by_id[image_id],
+							elapsed_ms(t1, clock_type::now()));
 				pages.push_back(page);
 				print_row(page, 12);
 				if (args.write_json_pages)
