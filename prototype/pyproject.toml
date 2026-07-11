@@ -1,7 +1,7 @@
 [project]
 name = "prototype"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python prototype for optical music recognition (staff removal, symbol splitting, MIDI export)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
