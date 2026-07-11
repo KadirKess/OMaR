@@ -196,6 +196,28 @@ namespace omr
 		return std::hypot(dx, dy);
 	}
 
+	bool CropDiagnostics::balances() const noexcept
+	{
+		return rejected_no_supported_notehead + rejected_stacked_head
+			+ rejected_semantic_union_empty + rejected_no_ink_touched
+			+ yielded_crops
+			== components_considered;
+	}
+
+	CropDiagnostics&
+	CropDiagnostics::operator+=(const CropDiagnostics& other) noexcept
+	{
+		candidate_target_annotations += other.candidate_target_annotations;
+		components_considered += other.components_considered;
+		rejected_no_supported_notehead += other.rejected_no_supported_notehead;
+		rejected_stacked_head += other.rejected_stacked_head;
+		rejected_semantic_union_empty += other.rejected_semantic_union_empty;
+		rejected_no_ink_touched += other.rejected_no_ink_touched;
+		yielded_crops += other.yielded_crops;
+		images_without_noteheads += other.images_without_noteheads;
+		return *this;
+	}
+
 	DeepScoresDataset::DeepScoresDataset(std::filesystem::path root,
 										 const std::string& split)
 		: m_root(std::move(root))
@@ -331,10 +353,127 @@ namespace omr
 		return { std::move(ink), std::move(staffless), image };
 	}
 
+	std::vector<CropSample>
+	DeepScoresDataset::discover_page_crops(const std::string& image_id,
+										   double link_scale,
+										   double margin_scale) const
+	{
+		const DatasetImage& image = images.at(image_id);
+		auto [ink, staffless, staff_space, staff_line] = staffless_ink(image);
+		cv::Mat1b pre_image;
+		cv::bitwise_not(ink.mat(), pre_image);
+		const Preprocessor staff_detector(pre_image);
+		const std::vector<int> staff_rows =
+			staff_detector.staffline_detection_projection();
+		cv::Mat labels, stats, centroids;
+		const int count = cv::connectedComponentsWithStats(
+			staffless.mat(), labels, stats, centroids, 8, CV_32S);
+		const int minimum_area = std::max(
+			2, static_cast<int>(std::lround(0.08 * staff_space * staff_space)));
+		const double link_distance = std::max(2.0, link_scale * staff_space);
+
+		struct Region
+		{
+			int label;
+			BBox box;
+		};
+		std::vector<Region> regions;
+		const int staff_margin =
+			static_cast<int>(std::lround(2.0 * staff_space));
+		for (int label = 1; label < count; ++label)
+		{
+			if (stats.at<int>(label, cv::CC_STAT_AREA) < minimum_area)
+				continue;
+			const int x = stats.at<int>(label, cv::CC_STAT_LEFT);
+			const int y = stats.at<int>(label, cv::CC_STAT_TOP);
+			const int w = stats.at<int>(label, cv::CC_STAT_WIDTH);
+			const int h = stats.at<int>(label, cv::CC_STAT_HEIGHT);
+			const bool near_staff = staff_rows.empty()
+				|| std::any_of(staff_rows.begin(), staff_rows.end(),
+							   [&](int row) {
+								   return row >= y - staff_margin
+									   && row < y + h + staff_margin;
+							   });
+			if (!near_staff)
+				continue;
+			regions.push_back({ label, { x, y, x + w, y + h } });
+		}
+
+		auto distance = [](const BBox& a, const BBox& b) {
+			const int dx = std::max({ 0, a.x0 - b.x1, b.x0 - a.x1 });
+			const int dy = std::max({ 0, a.y0 - b.y1, b.y0 - a.y1 });
+			return std::hypot(static_cast<double>(dx), static_cast<double>(dy));
+		};
+		std::vector<int> parent(regions.size());
+		for (std::size_t i = 0; i < parent.size(); ++i)
+			parent[i] = static_cast<int>(i);
+		auto find = [&](int value) {
+			int root = value;
+			while (parent[root] != root)
+				root = parent[root];
+			while (parent[value] != value)
+			{
+				const int next = parent[value];
+				parent[value] = root;
+				value = next;
+			}
+			return root;
+		};
+		for (std::size_t i = 0; i < regions.size(); ++i)
+			for (std::size_t j = i + 1; j < regions.size(); ++j)
+				if (distance(regions[i].box, regions[j].box) <= link_distance)
+				{
+					const int ri = find(static_cast<int>(i));
+					const int rj = find(static_cast<int>(j));
+					if (ri != rj)
+						parent[rj] = ri;
+				}
+
+		std::unordered_map<int, std::vector<int>> groups;
+		for (std::size_t i = 0; i < regions.size(); ++i)
+			groups[find(static_cast<int>(i))].push_back(static_cast<int>(i));
+		const int margin =
+			static_cast<int>(std::lround(margin_scale * staff_space));
+		std::vector<CropSample> samples;
+		for (const auto& [root, members] : groups)
+		{
+			(void)root;
+			BBox box = regions[members.front()].box;
+			std::unordered_set<int> group_labels;
+			for (int index : members)
+			{
+				const auto& region = regions[index];
+				group_labels.insert(region.label);
+				box.x0 = std::min(box.x0, region.box.x0);
+				box.y0 = std::min(box.y0, region.box.y0);
+				box.x1 = std::max(box.x1, region.box.x1);
+				box.y1 = std::max(box.y1, region.box.y1);
+			}
+			const int x0 = std::max(0, box.x0 - margin);
+			const int y0 = std::max(0, box.y0 - margin);
+			const int x1 = std::min(ink.cols(), box.x1 + margin);
+			const int y1 = std::min(ink.rows(), box.y1 + margin);
+			CropSample sample;
+			sample.original_mask = crop_mask(ink, x0, y0, x1, y1);
+			sample.staffless_mask =
+				crop_mask(is_in(labels, group_labels), x0, y0, x1, y1);
+			sample.staff_space = staff_space;
+			sample.staff_line = staff_line;
+			sample.image_id = image_id;
+			sample.origin = { x0, y0 };
+			samples.push_back(std::move(sample));
+		}
+		std::sort(
+			samples.begin(), samples.end(),
+			[](const auto& a, const auto& b) { return a.origin < b.origin; });
+		return samples;
+	}
+
 	std::vector<CropSample> DeepScoresDataset::iter_supported_crops(
 		std::optional<int> limit, std::optional<unsigned int> shuffle_seed,
 		std::optional<int> max_pages,
-		std::optional<std::unordered_set<std::string>> image_id_filter) const
+		std::optional<std::unordered_set<std::string>> image_id_filter,
+		CropDiagnosticsByImage* diagnostics) const
 	{
 		std::vector<CropSample> samples;
 		if (limit && *limit <= 0)
@@ -381,6 +520,8 @@ namespace omr
 		{
 			if (image_id_filter && !image_id_filter->count(image_id))
 				continue;
+			CropDiagnostics* page_diagnostics =
+				diagnostics ? &(*diagnostics)[image_id] : nullptr;
 			const DatasetImage& image = images.at(image_id);
 			const auto by_it = by_image.find(image_id);
 			if (by_it == by_image.end())
@@ -398,8 +539,15 @@ namespace omr
 				if (TARGET_CATEGORY_NAMES.at(cat.name) == "notehead")
 					heads.push_back(aid);
 			}
+			if (page_diagnostics)
+				page_diagnostics->candidate_target_annotations =
+					static_cast<int>(targets.size());
 			if (heads.empty())
+			{
+				if (page_diagnostics)
+					page_diagnostics->images_without_noteheads = 1;
 				continue;
+			}
 
 			std::vector<double> head_heights;
 			head_heights.reserve(heads.size());
@@ -452,7 +600,6 @@ namespace omr
 				std::vector<std::string> component = sorted_ids(component_ids);
 				std::vector<std::string> kinds;
 				kinds.reserve(component.size());
-				int head_count = 0;
 				int stem_count = 0;
 				int beam_count = 0;
 				for (const auto& aid : component)
@@ -461,17 +608,15 @@ namespace omr
 					const auto& cat = categories.at(ann.cat_id[0]);
 					const std::string kind = TARGET_CATEGORY_NAMES.at(cat.name);
 					kinds.push_back(kind);
-					if (kind == "notehead")
-						++head_count;
-					else if (kind == "stem")
+					if (kind == "stem")
 						++stem_count;
 					else if (kind == "beam")
 						++beam_count;
 				}
 				(void)stem_count;
 				(void)beam_count;
-				if (head_count == 0)
-					continue;
+				if (page_diagnostics)
+					++page_diagnostics->components_considered;
 
 				std::vector<std::pair<double, double>> centers;
 				for (std::size_t i = 0; i < component.size(); ++i)
@@ -494,7 +639,11 @@ namespace omr
 					}
 				}
 				if (stacked_heads)
+				{
+					if (page_diagnostics)
+						++page_diagnostics->rejected_stacked_head;
 					continue;
+				}
 
 				if (!semantic)
 				{
@@ -551,6 +700,12 @@ namespace omr
 					(void)kind;
 					union_mask = union_mask | mask;
 				}
+				if (!union_mask.any())
+				{
+					if (page_diagnostics)
+						++page_diagnostics->rejected_semantic_union_empty;
+					continue;
+				}
 				std::unordered_set<int> touched;
 				for (int y = 0; y < union_mask.rows(); ++y)
 				{
@@ -562,7 +717,11 @@ namespace omr
 					}
 				}
 				if (touched.empty())
+				{
+					if (page_diagnostics)
+						++page_diagnostics->rejected_no_ink_touched;
 					continue;
+				}
 				const Mask compound = is_in(*labels, touched);
 
 				auto bbox = union_mask.bbox();
@@ -590,6 +749,8 @@ namespace omr
 				sample.annotation_ids = sorted_ids(component_ids);
 				sample.origin = { x0, y0 };
 				samples.push_back(std::move(sample));
+				if (page_diagnostics)
+					++page_diagnostics->yielded_crops;
 				if (limit && static_cast<int>(samples.size()) >= *limit)
 					return samples;
 				bool new_page = pages_seen.insert(image_id).second;

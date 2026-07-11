@@ -34,6 +34,24 @@ namespace omr
 		std::pair<int, int> origin{ 0, 0 };
 	};
 
+	struct CropDiagnostics
+	{
+		int candidate_target_annotations = 0;
+		int components_considered = 0;
+		int rejected_no_supported_notehead = 0;
+		int rejected_stacked_head = 0;
+		int rejected_semantic_union_empty = 0;
+		int rejected_no_ink_touched = 0;
+		int yielded_crops = 0;
+		int images_without_noteheads = 0;
+
+		bool balances() const noexcept;
+		CropDiagnostics& operator+=(const CropDiagnostics& other) noexcept;
+	};
+
+	using CropDiagnosticsByImage =
+		std::unordered_map<std::string, CropDiagnostics>;
+
 	struct DatasetCategory
 	{
 		std::string id;
@@ -76,12 +94,19 @@ namespace omr
 		std::tuple<Mask, Mask, DatasetImage>
 		load_page(const std::string& image_id) const;
 
+		// Inference-only crop discovery. This path reads page pixels only.
+		std::vector<CropSample>
+		discover_page_crops(const std::string& image_id,
+							double link_scale = 0.2,
+							double margin_scale = 0.6) const;
+
 		std::vector<CropSample> iter_supported_crops(
 			std::optional<int> limit = std::nullopt,
 			std::optional<unsigned int> shuffle_seed = std::nullopt,
 			std::optional<int> max_pages = std::nullopt,
 			std::optional<std::unordered_set<std::string>> image_id_filter =
-				std::nullopt) const;
+				std::nullopt,
+			CropDiagnosticsByImage* diagnostics = nullptr) const;
 
 		cv::Mat semantic_mask(const DatasetImage& image) const;
 		Mask ink_mask(const DatasetImage& image) const;

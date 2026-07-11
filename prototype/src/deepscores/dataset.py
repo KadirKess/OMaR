@@ -165,6 +165,39 @@ class DeepScoresDataset:
             )
         return samples
 
+    def inference_page_compounds(self, image_id: str) -> list[CropSample]:
+        """Discover crops from page pixels without loading annotations or truth."""
+        image_id = str(image_id)
+        original, staffless, staff_space, staff_line = self._staffless_ink(
+            self.images[image_id]
+        )
+        labels = measure.label(staffless)
+        minimum_area = max(2, int(round(0.08 * staff_space**2)))
+        margin = int(round(0.6 * staff_space))
+        samples = []
+        for region in measure.regionprops(labels):
+            if region.area < minimum_area:
+                continue
+            y0, x0, y1, x1 = region.bbox
+            crop_x0 = max(0, x0 - margin)
+            crop_x1 = min(original.shape[1], x1 + margin)
+            crop_y0 = max(0, y0 - margin)
+            crop_y1 = min(original.shape[0], y1 + margin)
+            component = labels[crop_y0:crop_y1, crop_x0:crop_x1] == region.label
+            samples.append(
+                CropSample(
+                    original_mask=original[crop_y0:crop_y1, crop_x0:crop_x1],
+                    staffless_mask=component,
+                    truth_masks={},
+                    staff_space=staff_space,
+                    staff_line=staff_line,
+                    image_id=image_id,
+                    annotation_ids=(),
+                    origin=(crop_x0, crop_y0),
+                )
+            )
+        return samples
+
     def iter_supported_crops(
         self, limit: int | None = None, shuffle_seed: int | None = None
     ) -> Iterator[CropSample]:
