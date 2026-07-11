@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automatic analysis of musical scores</title>
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #333;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+    background: #fff;
+  }
+  h1, h2, h3 { color: #24292f; line-height: 1.25; }
+  h1 { font-size: 2rem; margin: 0 0 .5rem; }
+  h2 { font-size: 1.4rem; margin: 2.5rem 0 .5rem; border-bottom: 1px solid #eee; padding-bottom: .3rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 .3rem; }
+  p { margin: .6rem 0; }
+  a { color: #0969da; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; height: auto; display: block; margin: 1rem 0; border: 1px solid #eaecef; }
+  figcaption, .cap { text-align: center; color: #6a737d; font-size: .9rem; margin: -.4rem 0 1.4rem; }
+  table { border-collapse: collapse; margin: 1rem 0; width: 100%; font-size: .95rem; }
+  th, td { border-bottom: 1px solid #eaecef; padding: .45rem .6rem; text-align: left; }
+  th { font-weight: 600; }
+  td:not(:first-child), th:not(:first-child) { text-align: right; }
+  code { background: #f6f8fa; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  hr { border: none; border-top: 1px solid #eee; margin: 2.5rem 0; }
+  .lead { font-size: 1.1rem; color: #555; }
+  .meta { color: #6a737d; font-size: .95rem; }
+  ul { margin: .4rem 0; padding-left: 1.4rem; }
+  li { margin: .25rem 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .tag { display: inline-block; background: #f6f8fa; color: #6a737d; padding: .05rem .4rem; border-radius: 3px; font-size: .82rem; margin-left: .3rem; }
+</style>
+</head>
+<body>
+
+<h1>Automatic analysis of musical scores</h1>
+<p class="lead">An end-to-end Optical Music Recognition (OMR) pipeline: from a printed score image to a playable MIDI file, with a Python reference implementation and a hand-rolled C++ port.</p>
+<p class="meta"><strong>Sacha Melin &amp; Abdulkadir Kessaria</strong> &middot; EPITA &middot; June -- July 2026</p>
+
+<hr>
+
+<h2>Context</h2>
+<p>Optical Music Recognition (OMR) converts printed or handwritten scores into machine-readable formats. Classical OMR pipelines, following <a href="https://link.springer.com/article/10.1007/s13735-012-0004-6">Rebelo et al.</a>, split into four stages: image preprocessing, symbol recognition, musical information reconstruction, and notation encoding.</p>
+<p>This project implements that pipeline from scratch, evaluated on the <a href="https://zenodo.org/records/4012193">DeepScoresV2</a> dense subset (CC BY 4.0). The scope is deliberately restricted to <strong>filled quarter notes and beamed eighth notes</strong> (blacks and croches) plus their stems and beams. Clefs, key signatures, accidentals, rests, flags, open noteheads, and grace heads are out of scope &mdash; this restriction came from concrete obstacles (staves split open noteheads into two arcs; descriptors are unstable on those fragments).</p>
+<p>Four written reports (in French) sit under <code>reports/</code>: state of the art, evaluation methodology, methods, and results. This page summarizes the work in English, plus the later C++ port.</p>
+
+<h2>Timeline</h2>
+
+<h3>Research</h3>
+<ul>
+  <li>Project bootstrap and repository setup.</li>
+  <li>State of the art report (Livrable 1): standard OMR stages, classical methods, MusicXML/MEI/MIDI trade-offs.</li>
+  <li>Evaluation methodology report (Livrable 2): per-stage metric mapping, DeepScores/PrIMuS/DIBCO as evaluation bases, thin-class caveat.</li>
+</ul>
+
+<h3>Python prototype</h3>
+<ul>
+  <li>Preprocessing: Otsu and Sauvola binarization, Hough deskew, staff-space height, projection staff-line detection, staff-line removal.</li>
+  <li>Primitive splitting prototype (beams, stems, noteheads via morphological opening + ellipse scan).</li>
+  <li>Graph reconstruction: notation graph, rewrite rules (NOTE, BEAMED_GROUP).</li>
+  <li>Duration and pitch semantics; DeepScores I/O; staged metrics.</li>
+  <li>MIDI export on six selected clean DeepScores pages.</li>
+  <li>Methods and results reports (Livrables 3, 4).</li>
+</ul>
+
+<h3>C++ port</h3>
+<ul>
+  <li>Foundation: CMake + OpenCV, <code>Mask</code>, primitives, graph types, splitter scaffolding.</li>
+  <li>CI for tests; primitive splitter; dataset + page I/O.</li>
+  <li>Preprocessing, assembly and semantics, dataset, page I/O, pure metrics, symbol evaluation.</li>
+  <li>End-to-end C++ pipeline + MIDI export.</li>
+  <li>Ground-truth-free crop discovery, visualization overlay, and Python-vs-C++ comparison.</li>
+</ul>
+
+<h2>Approach</h2>
+
+<h3>1. Preprocessing</h3>
+<ul>
+  <li><strong>Binarization</strong>: Sauvola adaptive local thresholding (31&times;31 window, <em>k</em>=0.12); ink = 0 / background = 255. On DeepScores, Otsu is sufficient because the images are already clean and typographic.</li>
+  <li><strong>Deskew</strong>: Hough transform on Canny edges. DeepScores pages are pre-deskewed, so this is only exercised by the standalone benchmark (mean angular error 0.28&deg;).</li>
+  <li><strong>Staff detection</strong>: horizontal projection profile, peak picking. An earlier shortest-path-via-Dijkstra prototype was tried and dropped as too heavy.</li>
+  <li><strong>Staff-line removal</strong>: walk vertical segments per column, blank only those thinner than twice the line height, so stems crossing staff lines survive.</li>
+  <li><strong>Staff-space height</strong>: run-length mode of vertical black and white runs across all columns.</li>
+</ul>
+
+<h3>2. Symbol recognition</h3>
+<p>After staff removal, each connected component is decomposed into primitives by morphological opening with tailored structuring elements, in order:</p>
+<ul>
+  <li><strong>Beams</strong> &mdash; opening with a rotated line segment.</li>
+  <li><strong>Stems</strong> &mdash; vertical opening with a narrow probe, after beam subtraction.</li>
+  <li><strong>Noteheads</strong> &mdash; elliptical template scan around each stem endpoint.</li>
+</ul>
+<p>Residual ink becomes <code>unknown</code>. A component is <code>ACCEPTED</code> if topology is valid (one head per stem, a beam joins &ge;2 stems), <code>UNCERTAIN</code> if valid but with unexplained ink, <code>REJECTED</code> otherwise.</p>
+<p>Classification covers four DeepScores categories: <code>noteheadBlackOnLine</code>, <code>noteheadBlackInSpace</code>, <code>stem</code>, <code>beam</code>. The OnLine/InSpace distinction is geometric (head center vs detected staff lines), so no trained classifier is needed &mdash; this is exactly why scope was narrowed to filled heads.</p>
+
+<h3>3. Reconstruction</h3>
+<p>The score is modeled as a notation graph. Three rewrite rules applied to fixpoint, in the tradition of Fahmy and Blostein:</p>
+<ul>
+  <li>A stem bearing exactly one head becomes a <code>NOTE</code>.</li>
+  <li>Notes sharing a beam become a <code>BEAMED_GROUP</code>.</li>
+  <li>(Chords &mdash; multiple heads on a stem &mdash; are not handled in this scope.)</li>
+</ul>
+<p>Edges <code>HEAD_TO_STEM</code> and <code>STEM_TO_BEAM</code> come from the splitter; spatial <code>ABOVE</code> and <code>ALIGNED_VERTICAL</code> are added by pairwise node traversal. <strong>Duration is structural</strong> (filled head + stem without beam = quarter; filled heads joined by a beam = eighths). <strong>Pitch is geometric</strong> (head vertical position in half-staff-lines above the bottom line, converted to a diatonic degree; clef assumed treble, which holds thanks to clean-page selection).</p>
+
+<h3>4. MIDI encoding</h3>
+<p>Output is monophonic format-0 SMF, 480 PPQ, 120 BPM. Each note fires then releases when its duration elapses; no overlap, no explicit rests. Expressive formats (MusicXML, MEI) are out of scope.</p>
+
+<h2>Crop discovery: from annotations to inference-free</h2>
+<p>The pipeline processes a score page not as one image but as a set of <em>crops</em>, each fed to the splitter. How those crops are chosen is a methodological question of its own, and our answer changed over the project.</p>
+
+<h3>Stage A &mdash; annotation-grounded crops <span class="tag">initial</span></h3>
+<p>Crop discovery was a problem we initially did not have time or a clear idea to solve well, so we took a shortcut: seed crops from the DeepScores annotations themselves. The dataset class exposed <code>iter_supported_crops</code>, which walked the per-page annotation list, built a proximity graph across annotations, and grouped nearby supported annotations (noteheads + their associated stems/beams) into one compound crop. Pixels were then cropped around each compound's bounding box.</p>
+<p>This was convenient &mdash; the ground truth guaranteed every crop carried something to find, which made measuring the splitter, detector, and classifier in isolation easy. But it is <strong>cheating in an OMR sense</strong>: a real system does not have the annotation file. Using GT to choose what to feed the pipeline meant upstream failures (missing a symbol entirely) were invisible to the benchmark, so the numbers did not reflect real-world behavior. The standalone <code>splitting_eval.py</code> and <code>midi_export.py</code> still use this path, but the main pipeline no longer does.</p>
+
+<h3>Stage B &mdash; ground-truth-free crop discovery <span class="tag">current</span></h3>
+<p>Once the core pipeline was stable, we went back and replaced the shortcut with our own inference-free crop discovery. The main pipeline (<code>pipeline_eval</code>, both Python and C++) now uses <code>inference_page_compounds</code> (Python) / <code>discover_page_crops</code> (C++), which reads page pixels only:</p>
+<ul>
+  <li>Otsu ink, then staff-line removal.</li>
+  <li>Area threshold <code>0.08 &middot; staff_space&sup2;</code> on connected components.</li>
+  <li>Group components within <code>0.2 &middot; staff_space</code>.</li>
+  <li>Reject components farther than <code>2.0 &middot; staff_space</code> from every detected staff row.</li>
+  <li>Margin <code>0.6 &middot; staff_space</code> around the final crop.</li>
+</ul>
+<p>Reports carry <code>"inference_ground_truth_free": true</code> and <code>"crop_discovery": "image_connected_components"</code>. Ground truth is loaded only <strong>after</strong> prediction, only to score the full-page result. A missed symbol now correctly lowers recall; a spurious crop correctly lowers precision.</p>
+<p>This change applies to both the Python reference and the C++ port; it is the last methodological step of the project.</p>
+
+<h3>Impact of the methodological shift (Python, same 10 test pages, IoU 0.3)</h3>
+<p>The earlier written results report (Livrable 4) was produced with GT-based crops; the current run is fully inference-free. Comparing the two makes the cost of the shortcut visible:</p>
+<table>
+  <thead><tr><th>Metric</th><th>GT-based crops (old)</th><th>Inference-free (current)</th></tr></thead>
+  <tbody>
+    <tr><td style="text-align:left">mAP @0.3</td><td>0.6445</td><td>0.5154</td></tr>
+    <tr><td style="text-align:left">Accuracy</td><td>0.9309</td><td>0.8847</td></tr>
+    <tr><td style="text-align:left">Edge F1</td><td>0.4001</td><td>0.3346</td></tr>
+    <tr><td style="text-align:left">Duration SER</td><td>0.1105</td><td>0.4175</td></tr>
+    <tr><td style="text-align:left">Pitch SER</td><td>0.3783</td><td>0.6039</td></tr>
+  </tbody>
+</table>
+<p class="meta">Both runs use 10 DeepScores test pages at IoU 0.3 on the same four categories. The page sets differ (the old run used <code>--limit 10</code> without a manifest), so this is an indicative comparison, not a controlled A/B test. The trend is unambiguous: GT-based cropping inflated every metric by feeding the pipeline only crops it was guaranteed to succeed on.</p>
+
+<h2>Evaluation</h2>
+<p>Each pipeline stage has its own metric, so a regression can be localized exactly.</p>
+<table>
+  <thead><tr><th>Metric</th><th>Stage</th><th>What it localizes</th></tr></thead>
+  <tbody>
+    <tr><td>Mask P/R/F1 @IoU</td><td>splitting</td><td style="text-align:left">pixel-level primitive segmentation</td></tr>
+    <tr><td>mAP @IoU</td><td>detection</td><td style="text-align:left">bbox-level detection</td></tr>
+    <tr><td>Accuracy + confusion matrix</td><td>classification</td><td style="text-align:left">OnLine/InSpace + stem + beam</td></tr>
+    <tr><td>Edge P/R/F1</td><td>reconstruction</td><td style="text-align:left">head-to-stem and stem-to-beam pairing</td></tr>
+    <tr><td>Duration SER</td><td>end-to-end</td><td style="text-align:left">quarter/eighth sequence vs ground truth</td></tr>
+    <tr><td>Pitch SER</td><td>end-to-end</td><td style="text-align:left">pitch sequence vs ground truth</td></tr>
+  </tbody>
+</table>
+<p><strong>Thin-class caveat.</strong> DeepScores annotates stems as 1-pixel-wide boxes. A correctly detected 4-px stem scores about 0.25 IoU at the strict 0.5 threshold, so stem mAP is structurally deflated. Notehead mAP (wide shapes) is the reliable signal. The 0.3 IoU threshold is the lenient default for that reason.</p>
+
+<h3>10-page run at IoU 0.3 (Python vs C++)</h3>
+<table>
+  <thead><tr><th></th><th>Python</th><th>C++</th></tr></thead>
+  <tbody>
+    <tr><td style="text-align:left">Total crops</td><td>4,941</td><td>3,108</td></tr>
+    <tr><td style="text-align:left">Useful crops</td><td>1,411</td><td>1,228</td></tr>
+    <tr><td style="text-align:left">Irrelevant crops</td><td>3,530</td><td>1,880</td></tr>
+    <tr><td style="text-align:left">Coverage</td><td>1.0000</td><td>0.9959</td></tr>
+    <tr><td style="text-align:left">mAP @0.3</td><td>0.5154</td><td>0.5143</td></tr>
+    <tr><td style="text-align:left">Accuracy</td><td>0.8847</td><td>0.8777</td></tr>
+    <tr><td style="text-align:left">Edge F1</td><td>0.3346</td><td>0.3180</td></tr>
+    <tr><td style="text-align:left">Duration SER</td><td>0.4175</td><td>0.3647</td></tr>
+    <tr><td style="text-align:left">Pitch SER</td><td>0.6039</td><td>0.5277</td></tr>
+    <tr><td style="text-align:left">Total wall time</td><td>205.4 s</td><td>33.4 s</td></tr>
+    <tr><td style="text-align:left"><strong>Speedup</strong></td><td colspan="2" style="text-align:right"><strong>6.14&times;</strong> overall (per-page range: 4.13&times; -- 14.12&times;)</td></tr>
+  </tbody>
+</table>
+<p>C++ finds 37% fewer crops while keeping 99.6% symbol coverage, and improves both duration and pitch SER. Both pipelines now run fully inference-ground-truth-free.</p>
+
+<figure>
+  <img src="assets/side_by_side_1.png" alt="Python (left) and C++ (right) overlay on the same DeepScores page: noteheads, stems, beams, association lines.">
+  <figcaption>Page 1 (lilyjazz). Both pipelines agree on crops and associations on this clean small page. Python: pink noteheads, blue stems, orange beams, lime associations. C++: red noteheads, green stems, orange beams, purple associations.</figcaption>
+</figure>
+
+<h2>C++ port</h2>
+<p>The full Python prototype was ported to C++20 by two people over about 5.5 working days. The C++ tree under <code>cpp/</code> mirrors the Python package shape one-to-one: <code>core/</code>, <code>models/</code>, <code>preprocessing/</code>, <code>symbols/</code>, <code>deepscores/</code>, <code>reconstruction/</code>, <code>benchmarks/</code>, <code>midi/</code>. Stack: CMake, C++20, OpenCV (containers and image primitives only), nlohmann/json, GoogleTest. Hand-rolled SMF-0 byte writer &mdash; no MIDI library.</p>
+<h3>How we used OpenCV</h3>
+<p>We used OpenCV as a fast C++ image container and primitive toolkit &mdash; <code>cv::Mat</code>, image I/O, morphology, connected components, integral images, <code>fitLine</code> &mdash; standing in for numpy and scikit-image so the port benchmark measures our pipeline, not our overhead. Everything that is actual OMR work we wrote ourselves: Sauvola binarization (hand-rolled with integral images), the primitive splitter, the graph rewrite rules, duration and pitch inference, and the SMF-0 MIDI byte writer. No OMR, graph-rewriting, or music-theory library was used.</p>
+<h3>Two deliverable apps</h3>
+<ul>
+  <li><code>omr_pipeline_eval</code> &mdash; runs the staged pipeline over a DeepScores split and writes an aggregate <code>report.json</code> with every staged metric, plus optional per-page JSON and PNG visualization overlays.</li>
+  <li><code>omr_midi_export</code> &mdash; runs the pipeline on six clean DeepScores pages and writes a format-0 SMF <code>.mid</code> plus a JSON sidecar per page.</li>
+</ul>
+<p>101 C++ tests pass. The definition of done is met: on a 10-page test run at IoU 0.3, C++ <code>report.json</code> means for mask notehead F1, mAP, accuracy, edge F1, SER, and pitch SER sit within about 5% of the Python reference, and the clean-page MIDI outputs audibly match the Python MIDI.</p>
+
+<h2>Gallery</h2>
+
+<figure>
+  <img src="assets/side_by_side_41.png" alt="Side-by-side on page 41 (emmentaler).">
+  <figcaption>Page 41 (emmentaler, 343 ground-truth symbols). Tight per-page agreement; C++ found 393 crops vs Python's 523.</figcaption>
+</figure>
+
+<figure>
+  <img src="assets/side_by_side_6.png" alt="Side-by-side on page 6 (gutenberg1939).">
+  <figcaption>Page 6 (gutenberg1939, 658 ground-truth symbols). C++ found 298 crops vs Python's 585 &mdash; about half &mdash; for an essentially identical mAP (0.483 vs 0.518) and a better duration and pitch SER.</figcaption>
+</figure>
+
+<hr>
+<p class="meta">Source: <a href="https://gitlab.cri.epita.fr">GitLab</a> &middot; dataset DeepScoresV2 (<a href="https://zenodo.org/records/4012193">CC BY 4.0</a>) &middot; last updated July 2026.</p>
+
+</body>
+</html>
